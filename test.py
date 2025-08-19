@@ -309,14 +309,19 @@ def render_create_sharing_room_page(username):
         room_name = st.text_input("공유방 이름 (예: 명작 탐험대, 인생 영화 모음)", max_chars=50)
         room_password = st.text_input("공유방 비밀번호 (선택 사항)", type="password", help="비밀번호를 설정하면 링크를 아는 사람도 비밀번호를 입력해야 접속할 수 있습니다.")
         
-        submit_button = st.form_submit_button("공유방 만들기!")
+         submit_button = st.form_submit_button("공유방 만들기!")
 
         if submit_button:
+            st.write("--- 디버깅 메시지 시작 ---") # ✨ 이 줄 추가!
+            st.write(f"공유방 이름: '{room_name}'") # ✨ 이 줄 추가!
+            st.write(f"선택된 기록물 ID: {selected_record_ids}") # ✨ 이 줄 추가!
+
             if not room_name:
                 st.error("공유방 이름을 입력해주세요!")
             elif not selected_record_ids:
                 st.error("공유할 기록물을 한 개 이상 선택해주세요!")
             else:
+                st.write("모든 유효성 검사 통과! 공유방 생성 진행.") # ✨ 이 줄 추가!
                 room_id = create_sharing_room(username, room_name, room_password, selected_record_ids)
                 
                 # st.experimental_get_query_params() 대신 st.query_params 사용
