@@ -6,14 +6,14 @@ from datetime import datetime
 import uuid # 고유 ID 생성을 위해 추가
 
 # --- Constants ---
-USER_DATA_FILE = 'users.json' # 사용자 정보를 저장할 파일
+USER_DATA_FILE = 'users.json' # 사용자 정보를 저장할 파일 (로그인 정보)
 SHARING_ROOMS_FILE = 'sharing_rooms.json' # 공유방 정보를 저장할 파일
 
 # Google Books API Key (선택 사항)
 # 발급받으셨다면 여기에 넣어주세요. 없어도 책 검색은 작동할 수 있습니다.
 GOOGLE_BOOKS_API_KEY = "YOUR_GOOGLE_BOOKS_API_KEY_HERE"
 
-# --- Helper Functions (사용자 및 기록 파일 관리) ---
+# --- Helper Functions: 파일 기반 데이터 관리 ---
 def load_users():
     """사용자 데이터를 로드합니다."""
     if os.path.exists(USER_DATA_FILE):
@@ -60,7 +60,7 @@ def save_user_records(username, records):
     with open(records_file, 'w', encoding='utf-8') as f:
         json.dump(records, f, indent=4, ensure_ascii=False) # 한글 인코딩 문제 방지
 
-# --- Functions for Sharing Rooms ---
+# --- Helper Functions: 공유방 관리 ---
 def load_sharing_rooms():
     """공유방 데이터를 로드합니다."""
     if os.path.exists(SHARING_ROOMS_FILE):
@@ -93,11 +93,9 @@ def get_sharing_room(room_id):
     rooms = load_sharing_rooms()
     return rooms.get(room_id)
 
-# --- Search Functions ---
+# --- API 연동 함수: 영화/책 검색 ---
 def search_movies(query):
     """TMDB API를 이용해 영화를 검색합니다. (API Key 없어도 작동 시도)"""
-    # TMDB는 API 키 없이는 대부분의 기능을 제대로 사용할 수 없습니다.
-    # 이 함수는 예시를 위한 것으로, 실제 사용시에는 API 키 발급이 권장됩니다.
     url = f"https://api.themoviedb.org/3/search/movie"
     params = {
         # "api_key": "YOUR_TMDB_API_KEY_HERE", # 실제 TMDB API Key를 발급받으면 여기에 입력
@@ -137,7 +135,7 @@ def search_books(query):
         st.warning(f"책 검색 요청 중 오류 발생: {e}. 인터넷 연결 또는 API 문제일 수 있습니다. 수동 입력을 이용해보세요.")
         return []
 
-# --- Display Search Results & Pre-fill Manual Form ---
+# --- 렌더링 함수: 검색 결과 표시 및 수동 입력 폼 채우기 ---
 def display_movie_result(movie):
     """검색된 영화 정보를 표시하고 기록하기 버튼으로 수동 입력 폼을 채웁니다."""
     title = movie.get('title')
@@ -183,7 +181,7 @@ def display_book_result(book):
         st.session_state['current_page'] = "🔍 작품 검색 및 기록" # 현재 페이지 유지
         st.rerun()
 
-# --- Manual Entry Form ---
+# --- 렌더링 함수: 수동 기록 폼 ---
 def render_manual_entry_form(username):
     """사용자가 직접 작품 정보를 입력하고 저장하는 폼을 렌더링합니다."""
     st.subheader("📝 작품 수동 기록하기")
@@ -260,7 +258,7 @@ def render_manual_entry_form(username):
             st.session_state['manual_entry_mode'] = False # 폼 접기
             st.rerun() # 화면 새로고침하여 초기화된 폼 보여주기
 
-# --- Main Search and Record Page ---
+# --- 렌더링 함수: 작품 검색 및 기록 페이지 ---
 def render_search_and_record_page():
     """작품 검색 및 기록 페이지를 렌더링합니다."""
     st.title("🔍 작품 검색 및 기록")
@@ -287,7 +285,7 @@ def render_search_and_record_page():
             else:
                 st.info("검색 결과가 없습니다. 직접 기록하기를 이용해보세요.")
         elif search_type == "책":
-            results = search_books(search_query)
+            results = search_books(query) # `query`를 `search_query`로 수정
             if results:
                 st.write(f"총 {len(results)}건의 책을 찾았습니다.")
                 for i, book in enumerate(results):
@@ -309,7 +307,7 @@ def render_search_and_record_page():
     with manual_entry_expander:
         render_manual_entry_form(st.session_state['username'])
 
-# --- Sharing Room Creation Page ---
+# --- 렌더링 함수: 감상 공유방 생성 페이지 ---
 def render_create_sharing_room_page(username):
     st.title("🎉 새 감상 공유방 만들기")
     st.info("나만의 감상 공유방을 만들고 친구들에게 링크를 공유해보세요!")
@@ -320,42 +318,49 @@ def render_create_sharing_room_page(username):
     user_records = load_user_records(username)
     if not user_records:
         st.warning("공유할 기록물이 없습니다. '작품 검색 및 기록'에서 먼저 기록을 추가해주세요!")
+        # 공유할 기록이 없으면 이전 성공 정보가 있어도 보여주지 않음
         if 'sharing_success_info' in st.session_state:
             del st.session_state['sharing_success_info']
         return
 
     st.subheader(f"✨ {username}님의 기록물")
+    # record_options는 [(표시될 라벨, 실제 값 ID)] 형태의 튜플 리스트
     record_options = [(f"{r['title']} ({r['recorded_date'].split(' ')[0]})", r['id']) for r in user_records]
     
-    # ----------------------------- ▼ 이곳이 수정된 부분입니다! ▼ -----------------------------
-    # Get a list of all currently available record IDs (the second element of each tuple in record_options)
-    all_available_record_ids = [option[1] for option in record_options]
+    # 현재 유효한 모든 기록 ID 목록을 Set 형태로 생성 (성능 최적화)
+    all_available_record_ids_set = {option[1] for option in record_options}
 
-    # Determine the initial value for st.multiselect's 'value' parameter
+    # st.multiselect에 전달할 초기값 (value 매개변수) 결정
     initial_multiselect_value = []
-    # If clear_sharing_multiselect flag is set (after form submission), initialize to empty list
-    if st.session_state.get('clear_sharing_multiselect', False):
-        initial_multiselect_value = []
-        st.session_state['clear_sharing_multiselect'] = False 
-    elif 'sharing_multiselect' in st.session_state:
-        # Otherwise, take the stored value from session_state.
-        # Importantly, filter this stored value to ensure all items are still valid (exist in all_available_record_ids)
-        initial_multiselect_value = [
-            record_id for record_id in st.session_state['sharing_multiselect']
-            if record_id in all_available_record_ids
-        ]
     
+    # 폼 제출 후 multiselect를 초기화해야 하는 경우 (flag 사용)
+    if st.session_state.get('clear_sharing_multiselect_flag', False):
+        initial_multiselect_value = []
+        # 플래그 사용 후 바로 초기화하여 다음 렌더링에서 다시 초기화되지 않도록 함
+        del st.session_state['clear_sharing_multiselect_flag'] 
+    else:
+        # 이전에 선택했던 값이 세션 상태에 있다면 가져옴
+        # .get() 메서드로 'sharing_multiselect'가 없을 때 빈 리스트를 기본값으로 지정하여 KeyError 방지
+        stored_selected_ids = st.session_state.get('sharing_multiselect', []) 
+        
+        # 저장된 선택값 중 현재 유효한(현재 기록 목록에 존재하는) 값들만 필터링
+        # 이 필터링이 TypeError를 방지하는 핵심 로직
+        initial_multiselect_value = [
+            record_id for record_id in stored_selected_ids
+            if record_id in all_available_record_ids_set
+        ]
+        
     selected_record_ids = st.multiselect(
         "공유방에 포함할 기록물을 선택해주세요 (여러 개 선택 가능):",
         options=record_options, # [('Label', 'Value_ID'), ...]
         format_func=lambda x: x[0].split(" (")[0], # x는 (Label, Value_ID) 튜플
-        key="sharing_multiselect", # 이 key로 session_state에 선택된 Value_ID 리스트가 저장됨
-        value=initial_multiselect_value # <--- 여기가 핵심! 필터링된 유효한 값만 전달
+        key="sharing_multiselect", # 이 key로 st.session_state에 선택된 Value_ID 리스트가 저장됨
+        value=initial_multiselect_value # <--- 필터링된 유효한 값들의 리스트를 전달!
     )
-    # ----------------------------- ▲ 여기까지 수정된 부분입니다! ▲ -----------------------------
 
     st.subheader("방 설정")
-    with st.form("create_room_form", clear_on_submit=True): # clear_on_submit=True는 그대로 둠
+    # clear_on_submit=True는 폼 제출 후 폼 내부의 위젯 값을 초기화
+    with st.form("create_room_form", clear_on_submit=True): 
         room_name = st.text_input("공유방 이름 (예: 명작 탐험대, 인생 영화 모음)", max_chars=50, key="room_name_input")
         room_password = st.text_input("공유방 비밀번호 (선택 사항)", type="password", help="비밀번호를 설정하면 링크를 아는 사람도 비밀번호를 입력해야 접속할 수 있습니다.", key="room_password_input")
         
@@ -370,19 +375,20 @@ def render_create_sharing_room_page(username):
                 room_id = create_sharing_room(username, room_name, room_password, selected_record_ids)
                 sharing_link = f"/?room_id={room_id}" 
 
-                # 성공 메시지/링크 정보를 세션 상태에 저장 (폼 외부에서 표시하기 위함)
+                # 공유방 생성 성공 정보를 세션 상태에 저장 (폼 외부에서 표시하기 위함)
                 st.session_state['sharing_success_info'] = {
                     "room_name": room_name,
                     "sharing_link": sharing_link,
                     "room_password": room_password
                 }
-                # multiselect 초기화를 트리거하는 플래그 설정 (이 플래그를 통해 위젯 값이 리셋됨)
-                st.session_state['clear_sharing_multiselect'] = True 
+                # multiselect를 초기화하도록 지시하는 플래그 설정
+                st.session_state['clear_sharing_multiselect_flag'] = True 
                 
-                st.session_state['current_page'] = "🤝 감상 공유방" # 현재 페이지 유지
-                st.rerun() # 성공 시에만 rerun
+                # 페이지를 다시 로드하여 성공 메시지 표시 및 폼 초기화 (UI 업데이트)
+                st.session_state['current_page'] = "🤝 감상 공유방" 
+                st.rerun() 
     
-    # 세션 상태에 저장된 성공 메시지 정보를 폼 외부에 표시 (플레이스홀더 사용)
+    # 세션 상태에 저장된 성공 메시지 정보를 폼 외부에 표시 (placeholder 사용)
     if 'sharing_success_info' in st.session_state:
         with success_message_placeholder.container(): 
             success_info = st.session_state['sharing_success_info']
@@ -392,11 +398,12 @@ def render_create_sharing_room_page(username):
             st.markdown(f"[클릭하여 공유방 바로가기]({success_info['sharing_link']})", unsafe_allow_html=True)
             st.info("이 페이지에서 나중에 공유방 관리(생성/삭제/수정) 기능을 추가할 수 있습니다.")
             
-            # 한 번 표시된 후에는 success_info를 지워 다음에 앱이 리로드 될 때 나타나지 않도록 할 수 있음
+            # 만약 한 번 보여준 후 다음 리로드 시에는 다시 보이지 않게 하고 싶다면 이 줄 주석 해제
             # del st.session_state['sharing_success_info'] 
 
-# --- Sharing Room Viewer Page ---
+# --- 렌더링 함수: 감상 공유방 조회 페이지 ---
 def render_sharing_room_viewer():
+    # st.query_params는 딕셔너리처럼 동작하여 URL 쿼리 파라미터에 접근
     query_params = st.query_params 
     room_id = query_params.get("room_id") 
 
@@ -413,9 +420,11 @@ def render_sharing_room_viewer():
     st.title(f"✨ 감상 공유방: {room_data['room_name']}")
     st.write(f"_{room_data['creator_username']}님의 감상_")
     
+    # 비밀번호가 설정되어 있다면 비밀번호 확인 로직 수행
     if room_data['room_password']:
-        auth_key = f"room_authenticated_{room_id}"
+        auth_key = f"room_authenticated_{room_id}" # 방마다 고유한 인증 상태 키 생성
         
+        # 인증되지 않았거나 다른 방이었다면 비밀번호 입력 폼 표시
         if auth_key not in st.session_state or not st.session_state[auth_key]:
             with st.form("room_password_form"):
                 entered_password = st.text_input("공유방 비밀번호를 입력해주세요:", type="password", key="room_pass_input")
@@ -423,27 +432,29 @@ def render_sharing_room_viewer():
                 
                 if auth_button:
                     if entered_password == room_data['room_password']:
-                        st.session_state[auth_key] = True 
-                        st.rerun()
+                        st.session_state[auth_key] = True # 해당 방에 대한 인증 성공 표시
+                        st.rerun() # 인증 후 페이지 리로드
                     else:
                         st.error("비밀번호가 올바르지 않습니다.")
-            return 
+            return # 비밀번호 입력 폼이 보이면 여기서 함수 종료 (아래 콘텐츠는 표시 안 함)
 
     st.info("이 방은 친구들과 함께 즐기는 공유방입니다. 비밀번호는 만든 사람에게 문의하세요.")
 
+    # 공유된 기록물 표시
     creator_username = room_data['creator_username']
     all_creator_records = load_user_records(creator_username)
     shared_record_ids = room_data['shared_record_ids']
     
+    # 모든 기록물 중 공유된 ID에 해당하는 기록물만 필터링
     shared_records = [r for r in all_creator_records if r['id'] in shared_record_ids]
 
     if shared_records:
         for record in shared_records:
-            with st.expander(f"{record.get('title')} ({record.get('recorded_date').split(' ')[0]})") as expander_element: # expander_element를 사용
+            # st.expander는 context manager이므로 'as expander_element' 필요 없음
+            with st.expander(f"{record.get('title')} ({record.get('recorded_date').split(' ')[0]})"): 
                 st.write(f"**종류:** {record.get('type')}")
                 st.write(f"**제목:** {record.get('title')}")
-                # "director_author" 필드가 없는 경우 KeyError 방지
-                if record.get('director_author'): 
+                if record.get('director_author'):
                     st.write(f"**{'감독' if record.get('type')=='영화' else '저자'}:** {record.get('director_author')}")
                 if record.get('release_pub_date'):
                     st.write(f"**{'개봉일' if record.get('type')=='영화' else '출판일'}:** {record.get('release_pub_date')}")
@@ -453,7 +464,7 @@ def render_sharing_room_viewer():
                 if record.get('image_url'):
                     try:
                         st.image(record.get('image_url'), width=200, caption=f"'{record.get('title')}' 포스터/표지")
-                    except Exception:
+                    except Exception: # 이미지 로드 실패 시
                         st.warning(f"이미지를 불러올 수 없습니다: {record.get('image_url')}")
                 
                 st.write(f"**나의 평점:** {'⭐' * record.get('rating')} ({record.get('rating')}점)")
@@ -462,23 +473,22 @@ def render_sharing_room_viewer():
     else:
         st.info("이 공유방에는 아직 공유된 기록물이 없습니다.")
 
-# --- Main App Logic ---
+# --- 메인 앱 로직 ---
 def main():
+    # 페이지 기본 설정: 제목, 아이콘, 레이아웃
     st.set_page_config(page_title="나만의 기록 앱", page_icon="📝", layout="wide")
 
-    # URL 쿼리 파라미터에서 room_id 확인
+    # URL 쿼리 파라미터에서 room_id 확인 (공유방 링크로 직접 접근했는지 여부)
     query_params = st.query_params
     room_id_from_url = query_params.get("room_id")
 
-    # session_state 초기화
-    if 'logged_in' not in st.session_state:
-        st.session_state['logged_in'] = False
-    if 'username' not in st.session_state:
-        st.session_state['username'] = None
-    if 'current_page' not in st.session_state:
-        st.session_state['current_page'] = "📖 내 기록 보기"
+    # 세션 상태(st.session_state) 초기화: 앱 전반의 상태를 기억
+    # 이 부분은 앱이 처음 로드될 때 또는 리셋될 때만 실행됩니다.
+    if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
+    if 'username' not in st.session_state: st.session_state['username'] = None
+    if 'current_page' not in st.session_state: st.session_state['current_page'] = "📖 내 기록 보기"
 
-    # 수동 입력 폼 관련 세션 스테이트 초기화 (값을 미리 채울 때 사용)
+    # 수동 입력 폼의 미리 채울 값들을 위한 세션 상태 변수 초기화
     if 'manual_entry_title' not in st.session_state: st.session_state['manual_entry_title'] = ''
     if 'manual_entry_type' not in st.session_state: st.session_state['manual_entry_type'] = '영화'
     if 'manual_entry_director_author' not in st.session_state: st.session_state['manual_entry_director_author'] = ''
@@ -487,64 +497,60 @@ def main():
     if 'manual_entry_summary' not in st.session_state: st.session_state['manual_entry_summary'] = ''
     if 'manual_entry_mode' not in st.session_state: st.session_state['manual_entry_mode'] = False
     
-    # 공유방 multiselect 초기화를 위한 플래그
-    if 'clear_sharing_multiselect' not in st.session_state:
-        st.session_state['clear_sharing_multiselect'] = False
-
-    # sharing_multiselect의 기본값을 항상 빈 리스트로 보장 (TypeError 방지)
+    # 공유방 멀티셀렉트 초기화를 위한 플래그 (폼 제출 후 초기화를 트리거)
+    if 'clear_sharing_multiselect_flag' not in st.session_state:
+        st.session_state['clear_sharing_multiselect_flag'] = False
+    # sharing_multiselect 위젯 자체의 값은 key="sharing_multiselect"에 의해 자동으로 관리되므로,
+    # 여기서는 초기 상태를 보장하기 위해 빈 리스트로 직접 설정하지 않고,
+    # 위젯이 로드될 때 value= 매개변수를 통해 제어합니다.
+    # 하지만 만약을 대비해서 해당 키가 없으면 빈 리스트로 시작하도록 하는 것이 안전
     if 'sharing_multiselect' not in st.session_state:
         st.session_state['sharing_multiselect'] = []
 
-    # 공유방 접속 시 별도 처리 (로그인 없이 바로 방으로 이동)
+
+    # 앱의 메인 로직 분기: 공유방 뷰어 vs. 일반 앱 (로그인 필요)
     if room_id_from_url:
-        render_sharing_room_viewer()
-    else: # 일반 앱 흐름 (로그인 필요)
-        if st.session_state['logged_in']:
+        render_sharing_room_viewer() # 공유방 링크로 접근 시 로그인 없이 바로 보여줌
+    else: # 일반 앱 사용: 로그인 필요
+        if st.session_state['logged_in']: # 로그인 상태라면 메인 앱 페이지 표시
             # --- 로그인 성공 후 메인 페이지 ---
             st.sidebar.title(f"환영합니다, {st.session_state['username']}님! 👋")
-            if st.sidebar.button("로그아웃 🚪"):
+            if st.sidebar.button("로그아웃 🚪"): # 로그아웃 버튼
                 st.session_state['logged_in'] = False
                 st.session_state['username'] = None
                 st.session_state['current_page'] = "📖 내 기록 보기"
                 st.session_state['manual_entry_mode'] = False
-                # 모든 공유방 인증 세션 초기화 (접속했던 방의 비밀번호도 초기화)
+                # 로그인 세션과 관련된 모든 상태를 초기화
                 for key in list(st.session_state.keys()):
-                    if key.startswith('room_authenticated_'):
+                    if key.startswith('room_authenticated_') or \
+                       key == 'sharing_success_info' or \
+                       key == 'clear_sharing_multiselect_flag' or \
+                       key == 'sharing_multiselect': # multiselect 값도 로그아웃 시 확실히 초기화
                         del st.session_state[key]
-                
-                # sharing_success_info 초기화 (성공 메시지를 다시 띄우지 않도록)
-                if 'sharing_success_info' in st.session_state:
-                    del st.session_state['sharing_success_info']
-                
-                # 공유방 멀티셀렉트 초기화
-                if 'sharing_multiselect' in st.session_state:
-                    del st.session_state['sharing_multiselect'] # 명시적으로 제거
-                if 'current_sharing_multiselect_initialized' in st.session_state: # 이 플래그도 초기화
-                    del st.session_state['current_sharing_multiselect_initialized']
+                st.rerun() # 로그아웃 후 앱 재시작 (로그인 페이지로 돌아감)
 
-                st.rerun()
-
-            # 사이드바에서 페이지 선택 라디오 버튼
+            # 사이드바에서 메뉴 선택
             st.sidebar.markdown("---")
-            selected_page = st.sidebar.radio(
+            selected_page_from_radio = st.sidebar.radio( # 라디오 버튼의 실제 선택값
                 "메뉴",
                 ["📖 내 기록 보기", "🔍 작품 검색 및 기록", "🤝 감상 공유방", "✨ 인기 작품 보기"],
                 key="main_menu_radio"
             )
             
-            # 페이지 전환 시 multiselect 초기화 플래그를 관리 (중요!)
-            if st.session_state['current_page'] != selected_page: # 페이지가 변경될 때만
-                if selected_page == "🤝 감상 공유방":
-                    st.session_state['clear_sharing_multiselect'] = True # multiselect 초기화 지시
+            # 페이지 전환 로직: 선택된 페이지가 현재 페이지와 다를 경우만 처리
+            if st.session_state['current_page'] != selected_page_from_radio:
+                # 페이지 변경 시 기존 공유방 성공 메시지 초기화 (선택사항, 깔끔한 UI 위함)
+                if 'sharing_success_info' in st.session_state:
+                    del st.session_state['sharing_success_info']
                 
-                # 다른 페이지에서 넘어올 때 공유방 성공 메시지 초기화 (선택 사항)
-                if selected_page != "🤝 감상 공유방" and 'sharing_success_info' in st.session_state:
-                     del st.session_state['sharing_success_info']
+                # '감상 공유방' 페이지로 이동할 때 multiselect 초기화를 지시하는 플래그 설정
+                if selected_page_from_radio == "🤝 감상 공유방":
+                    st.session_state['clear_sharing_multiselect_flag'] = True
+                
+                st.session_state['current_page'] = selected_page_from_radio # 현재 페이지 상태 업데이트
+                st.rerun() # 페이지 전환을 위해 앱 재실행
 
-                st.session_state['current_page'] = selected_page
-                st.rerun() # 페이지 전환
-
-            # 메인 콘텐츠 영역 (선택된 페이지에 따라 다른 함수 호출)
+            # 메인 콘텐츠 영역: 현재 선택된 페이지에 따라 다른 함수 호출
             if st.session_state['current_page'] == "📖 내 기록 보기":
                 st.title("📖 내 기록 보기")
                 user_records = load_user_records(st.session_state['username'])
@@ -584,8 +590,7 @@ def main():
                 st.write("지금 다른 사용자들이 어떤 작품에 관심을 가지고 있는지 보여주는 공간이 될 거예요!")
                 st.info("인기 작품 목록은 나중에 구현될 예정입니다.")
 
-        else:
-            # --- 로그인/회원가입 페이지 ---
+        else: # 로그인되지 않은 상태일 경우 로그인/회원가입 페이지 표시
             st.title("📝 나만의 기록 앱 로그인/회원가입")
             st.subheader("계정이 있으시면 로그인해주세요.")
 
