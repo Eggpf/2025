@@ -276,7 +276,6 @@ def render_search_and_record_page():
         search_button = st.form_submit_button(f"{search_type} 검색")
 
     if search_button and search_query:
-        # st.write("--- 디버깅 메시지 시작 (검색) ---") # 디버깅용
         st.write(f"'{search_query}'(으)로 {search_type}을(를) 검색 중입니다...")
         if search_type == "영화":
             results = search_movies(search_query)
@@ -340,9 +339,10 @@ def render_create_sharing_room_page(username):
         submit_button = st.form_submit_button("공유방 만들기!")
 
         if submit_button:
-            # st.write("--- 디버깅 메시지 시작 (공유방 만들기) ---") # 디버깅용
-            # st.write(f"공유방 이름: '{room_name}'") # 디버깅용
-            # st.write(f"선택된 기록물 ID: {selected_record_ids}") # 디버깅용
+            # 디버깅 메시지는 필요하면 주석 해제하여 사용
+            # st.write("--- 디버깅 메시지 시작 (공유방 만들기) ---")
+            # st.write(f"공유방 이름: '{room_name}'")
+            # st.write(f"선택된 기록물 ID: {selected_record_ids}")
 
             if not room_name:
                 st.error("공유방 이름을 입력해주세요!")
@@ -350,19 +350,26 @@ def render_create_sharing_room_page(username):
                 st.error("공유할 기록물을 최소 한 개 이상 선택해주세요!")
             else:
                 # 모든 유효성 검사 통과
-                # st.write("모든 유효성 검사 통과! 공유방 생성 진행.") # 디버깅용
+                # st.write("모든 유효성 검사 통과! 공유방 생성 진행.") 
                 room_id = create_sharing_room(username, room_name, room_password, selected_record_ids)
                 
                 # Streamlit의 쿼리 파라미터는 앱의 기본 경로에 자동 적용되므로,
                 # 상대 경로로 쿼리 파라미터만 추가하는 방식으로 링크 생성
                 sharing_link = f"/?room_id={room_id}" 
 
-                st.success(f"'{room_name}' 공유방이 성공적으로 만들어졌습니다! 🎉")
+                st.toast(f"'{room_name}' 공유방이 성공적으로 만들어졌습니다! 🎉", icon="✅") # st.toast로 변경 (깜빡임 개선)
                 st.write(f"아래 링크를 친구들에게 공유해주세요. (비밀번호: {room_password if room_password else '없음'})")
                 st.code(sharing_link)
                 st.markdown(f"[클릭하여 공유방 바로가기]({sharing_link})", unsafe_allow_html=True)
 
                 st.info("이 페이지에서 나중에 공유방 관리(생성/삭제/수정) 기능을 추가할 수 있습니다.")
+                
+                # 폼 초기화를 위해 세션 상태 값을 초기화합니다.
+                # (render_manual_entry_form과 겹치는 부분이지만 명시적으로 초기화)
+                st.session_state['room_name_input'] = ""
+                st.session_state['room_password_input'] = ""
+                st.session_state['sharing_multiselect'] = [] # multiselect 초기화
+
                 st.session_state['current_page'] = "🤝 감상 공유방" # 현재 페이지 유지
                 st.rerun() # 성공 시에만 rerun
 
@@ -419,7 +426,7 @@ def render_sharing_room_viewer():
                 st.write(f"**종류:** {record.get('type')}")
                 st.write(f"**제목:** {record.get('title')}")
                 if record.get('director_author'):
-                    st.write(f"**{'감독' if record.get('type')=='영화' else '저자'}:** {record.get('director_author')}")
+                    st.write(f"**{'감독' if record.get('type')=='영화' else '저자'}:** {record.get('director_director_author')}")
                 if record.get('release_pub_date'):
                     st.write(f"**{'개봉일' if record.get('type')=='영화' else '출판일'}:** {record.get('release_pub_date')}")
                 if record.get('genre'):
@@ -495,7 +502,7 @@ def main():
                 user_records = load_user_records(st.session_state['username'])
                 if user_records:
                     st.write(f"{st.session_state['username']}님의 소중한 기록들을 보여드릴게요.")
-                    for record in user_records: # enumerate 삭제
+                    for record in user_records: 
                         with st.expander(f"{record.get('title')} ({record.get('recorded_date').split(' ')[0]})"):
                             st.write(f"**종류:** {record.get('type')}")
                             st.write(f"**제목:** {record.get('title')}")
