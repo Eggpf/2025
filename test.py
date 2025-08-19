@@ -314,14 +314,13 @@ def render_create_sharing_room_page(username):
     st.title("🎉 새 감상 공유방 만들기")
     st.info("나만의 감상 공유방을 만들고 친구들에게 링크를 공유해보세요!")
 
-    # ------ 1. 성공 메시지 및 링크를 보여줄 placeholder 설정 ------
-    # 이 empty는 페이지가 리로드 되어도 유지되는 placeholder
+    # 성공 메시지 및 링크를 보여줄 placeholder 설정 (폼 바깥에서 관리)
     success_message_placeholder = st.empty() 
 
     user_records = load_user_records(username)
     if not user_records:
         st.warning("공유할 기록물이 없습니다. '작품 검색 및 기록'에서 먼저 기록을 추가해주세요!")
-        # ----- 2. 공유할 기록물이 없으면 성공 메시지 플레이스홀더를 지움 -----
+        # 공유할 기록물이 없으면 이전에 성공 정보가 있었다면 지움
         if 'sharing_success_info' in st.session_state:
             del st.session_state['sharing_success_info']
         return
@@ -329,18 +328,26 @@ def render_create_sharing_room_page(username):
     st.subheader(f"✨ {username}님의 기록물")
     record_options = [(f"{r['title']} ({r['recorded_date'].split(' ')[0]})", r['id']) for r in user_records]
     
-    # st.multiselect는 폼 외부에 있어도 폼 제출 시 값을 가져올 수 있음
+    # 폼 제출 후 multiselect 값 초기화를 위한 로직 추가
+    multiselect_value = []
+    if st.session_state.get('clear_sharing_multiselect', False):
+        multiselect_value = []
+        st.session_state['clear_sharing_multiselect'] = False # 플래그 바로 초기화
+    else:
+        # 이전에 선택했던 값이 있다면 불러오고, 없으면 빈 리스트
+        multiselect_value = st.session_state.get('sharing_multiselect', [])
+
+
     selected_record_ids = st.multiselect(
         "공유방에 포함할 기록물을 선택해주세요 (여러 개 선택 가능):",
         options=record_options,
         format_func=lambda x: x[0].split(" (")[0], 
-        key="sharing_multiselect" # Key 추가
+        key="sharing_multiselect", # Key 추가
+        value=multiselect_value # <-- 여기가 핵심! 초기화할 때 빈 리스트로 전달
     )
 
     st.subheader("방 설정")
-    # clear_on_submit=True 를 추가하여 폼 제출 후 자동으로 필드 초기화
-    # ----- 3. 폼 제출 시 clear_on_submit=True는 그대로 둠 -----
-    with st.form("create_room_form", clear_on_submit=True): 
+    with st.form("create_room_form", clear_on_submit=True): # clear_on_submit=True는 그대로 둠
         room_name = st.text_input("공유방 이름 (예: 명작 탐험대, 인생 영화 모음)", max_chars=50, key="room_name_input")
         room_password = st.text_input("공유방 비밀번호 (선택 사항)", type="password", help="비밀번호를 설정하면 링크를 아는 사람도 비밀번호를 입력해야 접속할 수 있습니다.", key="room_password_input")
         
@@ -350,24 +357,26 @@ def render_create_sharing_room_page(username):
             if not room_name:
                 st.error("공유방 이름을 입력해주세요!")
             elif not selected_record_ids: 
-                st.error("공유할 기록물을 한 개 이상 선택해주세요!")
+                st.error("공유할 기록물을 최소 한 개 이상 선택해주세요!")
             else:
                 room_id = create_sharing_room(username, room_name, room_password, selected_record_ids)
                 sharing_link = f"/?room_id={room_id}" 
 
-                # ----- 4. 성공 메시지/링크 정보를 세션 상태에 저장 -----
+                # 성공 메시지/링크 정보를 세션 상태에 저장 (폼 외부에서 표시하기 위함)
                 st.session_state['sharing_success_info'] = {
                     "room_name": room_name,
                     "sharing_link": sharing_link,
                     "room_password": room_password
                 }
+                # multiselect 초기화를 트리거하는 플래그 설정
+                st.session_state['clear_sharing_multiselect'] = True 
+                
                 st.session_state['current_page'] = "🤝 감상 공유방" # 현재 페이지 유지
-                # ----- 5. 성공 메시지를 보여주기 위해 스크립트 리렌더링 (단, st.toast는 사라짐) -----
-                st.rerun() 
+                st.rerun() # 성공 시에만 rerun
     
-    # ----- 6. 세션 상태에 저장된 성공 메시지 정보를 폼 외부에 표시 -----
+    # 세션 상태에 저장된 성공 메시지 정보를 폼 외부에 표시 (플레이스홀더 사용)
     if 'sharing_success_info' in st.session_state:
-        with success_message_placeholder.container(): # 플레이스홀더를 사용
+        with success_message_placeholder.container(): 
             success_info = st.session_state['sharing_success_info']
             st.success(f"'{success_info['room_name']}' 공유방이 성공적으로 만들어졌습니다! 🎉")
             st.write(f"아래 링크를 친구들에게 공유해주세요. (비밀번호: {success_info['room_password'] if success_info['room_password'] else '없음'})")
@@ -375,15 +384,8 @@ def render_create_sharing_room_page(username):
             st.markdown(f"[클릭하여 공유방 바로가기]({success_info['sharing_link']})", unsafe_allow_html=True)
             st.info("이 페이지에서 나중에 공유방 관리(생성/삭제/수정) 기능을 추가할 수 있습니다.")
             
-            # 한 번 보여줬으니, 사용자 재방문시 다시 보이지 않도록 정보 삭제 (선택 사항)
-            # del st.session_state['sharing_success_info'] 
-            # 만약 이 정보를 계속 보여주고 싶다면 주석 처리합니다. (기존 로직은 그대로 유지)
-
-    # st.multiselect 초기화를 위한 꼼수 (submit_button 이후에도 st.multiselect의 선택 값 유지되는 문제 방지)
-    # 폼 제출 후, 폼 바깥에 있는 multiselect가 선택값을 유지하는 문제를 해결
-    # clear_on_submit이 폼 안에 있는 것만 처리하기 때문.
-    if 'room_name_input' not in st.session_state or st.session_state['room_name_input'] == '':
-        st.session_state['sharing_multiselect'] = [] # multiselect 초기화 강제
+            # 한 번 표시된 후에는 success_info를 지워 다음에 앱이 리로드 될 때 나타나지 않도록 할 수 있음
+            # del st.session_state['sharing_success_info'] # 계속 보여주고 싶지 않다면 이 줄 주석 해제
 
 # --- Sharing Room Viewer Page ---
 def render_sharing_room_viewer():
@@ -432,8 +434,7 @@ def render_sharing_room_viewer():
             with st.expander(f"{record.get('title')} ({record.get('recorded_date').split(' ')[0]})"):
                 st.write(f"**종류:** {record.get('type')}")
                 st.write(f"**제목:** {record.get('title')}")
-                # "director_author" 필드가 없는 경우 KeyError 방지
-                if record.get('director_author'): 
+                if record.get('director_author'):
                     st.write(f"**{'감독' if record.get('type')=='영화' else '저자'}:** {record.get('director_author')}")
                 if record.get('release_pub_date'):
                     st.write(f"**{'개봉일' if record.get('type')=='영화' else '출판일'}:** {record.get('release_pub_date')}")
@@ -476,6 +477,10 @@ def main():
     if 'manual_entry_image_url' not in st.session_state: st.session_state['manual_entry_image_url'] = ''
     if 'manual_entry_summary' not in st.session_state: st.session_state['manual_entry_summary'] = ''
     if 'manual_entry_mode' not in st.session_state: st.session_state['manual_entry_mode'] = False
+    
+    # 공유방 multiselect 초기화를 위한 플래그 (새로 추가)
+    if 'clear_sharing_multiselect' not in st.session_state:
+        st.session_state['clear_sharing_multiselect'] = False
 
     # 공유방 접속 시 별도 처리 (로그인 없이 바로 방으로 이동)
     if room_id_from_url:
@@ -494,7 +499,7 @@ def main():
                     if key.startswith('room_authenticated_'):
                         del st.session_state[key]
                 
-                # 추가: sharing_success_info도 로그아웃 시 초기화 (깜빡임 문제와는 별개지만 정리)
+                # sharing_success_info 초기화 (성공 메시지를 다시 띄우지 않도록)
                 if 'sharing_success_info' in st.session_state:
                     del st.session_state['sharing_success_info']
                 st.rerun()
