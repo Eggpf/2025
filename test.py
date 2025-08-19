@@ -332,29 +332,22 @@ def render_create_sharing_room_page(username):
     )
 
     st.subheader("방 설정")
-    with st.form("create_room_form"):
+    # clear_on_submit=True 를 추가하여 폼 제출 후 자동으로 필드 초기화
+    with st.form("create_room_form", clear_on_submit=True): # <--- 이 부분 수정!
         room_name = st.text_input("공유방 이름 (예: 명작 탐험대, 인생 영화 모음)", max_chars=50, key="room_name_input")
         room_password = st.text_input("공유방 비밀번호 (선택 사항)", type="password", help="비밀번호를 설정하면 링크를 아는 사람도 비밀번호를 입력해야 접속할 수 있습니다.", key="room_password_input")
         
         submit_button = st.form_submit_button("공유방 만들기!")
 
         if submit_button:
-            # 디버깅 메시지는 필요하면 주석 해제하여 사용
-            # st.write("--- 디버깅 메시지 시작 (공유방 만들기) ---")
-            # st.write(f"공유방 이름: '{room_name}'")
-            # st.write(f"선택된 기록물 ID: {selected_record_ids}")
-
             if not room_name:
                 st.error("공유방 이름을 입력해주세요!")
             elif not selected_record_ids: # 선택된 기록물 리스트가 비어있을 경우
-                st.error("공유할 기록물을 최소 한 개 이상 선택해주세요!")
+                st.error("공유할 기록물을 한 개 이상 선택해주세요!")
             else:
                 # 모든 유효성 검사 통과
-                # st.write("모든 유효성 검사 통과! 공유방 생성 진행.") 
                 room_id = create_sharing_room(username, room_name, room_password, selected_record_ids)
                 
-                # Streamlit의 쿼리 파라미터는 앱의 기본 경로에 자동 적용되므로,
-                # 상대 경로로 쿼리 파라미터만 추가하는 방식으로 링크 생성
                 sharing_link = f"/?room_id={room_id}" 
 
                 st.toast(f"'{room_name}' 공유방이 성공적으로 만들어졌습니다! 🎉", icon="✅") # st.toast로 변경 (깜빡임 개선)
@@ -364,12 +357,11 @@ def render_create_sharing_room_page(username):
 
                 st.info("이 페이지에서 나중에 공유방 관리(생성/삭제/수정) 기능을 추가할 수 있습니다.")
                 
-                # 폼 초기화를 위해 세션 상태 값을 초기화합니다.
-                # (render_manual_entry_form과 겹치는 부분이지만 명시적으로 초기화)
-                st.session_state['room_name_input'] = ""
-                st.session_state['room_password_input'] = ""
-                st.session_state['sharing_multiselect'] = [] # multiselect 초기화
-
+                # 오류를 일으켰던 st.session_state 직접 초기화 코드들을 삭제함!
+                # st.session_state['room_name_input'] = ""
+                # st.session_state['room_password_input'] = ""
+                # st.session_state['sharing_multiselect'] = [] 
+                
                 st.session_state['current_page'] = "🤝 감상 공유방" # 현재 페이지 유지
                 st.rerun() # 성공 시에만 rerun
 
