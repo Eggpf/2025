@@ -298,7 +298,7 @@ def render_create_sharing_room_page(username):
     selected_record_ids = st.multiselect(
         "공유방에 포함할 기록물을 선택해주세요:",
         options=record_options,
-        format_func=lambda x: x.split(" (")[0]
+        format_func=lambda x: x[0].split(" (")[0] # x[0]으로 튜플의 첫 번째 요소를 지정
     )
 
     if not selected_record_ids:
