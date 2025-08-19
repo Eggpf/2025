@@ -331,30 +331,35 @@ def render_create_sharing_room_page(username):
     all_available_record_ids_set = {option[1] for option in record_options}
 
     # === 핵심 로직: st.session_state['sharing_multiselect']의 상태를 완벽하게 관리 ===
-    # multiselect의 value= 매개변수에 전달할 초기값 결정
-    initial_multiselect_value = [] # 기본적으로 빈 리스트로 시작
-    
-    # clear_sharing_multiselect_flag가 True이면, multiselect를 빈 리스트로 초기화해야 함
+    # 1. 'clear_sharing_multiselect_flag'가 True이면, multiselect 값을 빈 리스트로 초기화
     if st.session_state.get('clear_sharing_multiselect_flag', False):
-        initial_multiselect_value = [] # 초기값으로 빈 리스트를 사용
+        st.session_state['sharing_multiselect'] = [] # session_state 값을 직접 빈 리스트로 설정
         # 플래그는 사용 후 즉시 삭제하여 다음 렌더링에서 다시 초기화되지 않도록 함
         del st.session_state['clear_sharing_multiselect_flag'] 
-    elif 'sharing_multiselect' in st.session_state and isinstance(st.session_state['sharing_multiselect'], list):
-        # clear 플래그가 없으면, 기존 세션 상태에 저장된 값을 사용
-        # 단, 저장된 값이 리스트 형태가 아니면 무시 (오류 방지)
+    else:
+        # 2. 그렇지 않은 경우, 기존 세션 상태에 저장된 값을 유효성 검사하여 업데이트
+        # 'sharing_multiselect'가 없거나 리스트 형태가 아니면 빈 리스트로 시작하여 안전성 확보
+        if 'sharing_multiselect' not in st.session_state or not isinstance(st.session_state['sharing_multiselect'], list):
+            st.session_state['sharing_multiselect'] = []
         
-        # 저장된 선택값 중 현재 options에 유효한 값들만 필터링하여 초기값으로 사용
-        initial_multiselect_value = [
+        # 저장된 선택값 중 현재 options에 존재하는 유효한 ID들만 필터링하여 session_state에 다시 저장
+        # st.multiselect 위젯은 이 st.session_state 값을 자동으로 읽어 선택 상태를 표시
+        filtered_selections = [
             record_id for record_id in st.session_state['sharing_multiselect']
             if record_id in all_available_record_ids_set # 현재 존재하는 유효한 ID인지 확인
         ]
+        st.session_state['sharing_multiselect'] = filtered_selections
     
+    # st.multiselect 호출: value 매개변수 없이 key를 통한 session_state 관리만 의존
+    # st.session_state.sharing_multiselect의 현재 값이 위젯의 기본값으로 사용됨
     selected_record_ids = st.multiselect(
         "공유방에 포함할 기록물을 선택해주세요 (여러 개 선택 가능):",
-        options=record_options, 
-        format_func=lambda x: x[0].split(" (")[0], 
-        key="sharing_multiselect", # 이 key를 통해 위젯의 현재 선택 상태가 st.session_state에 저장됨
-        value=initial_multiselect_value # <--- 여기가 핵심! 유효한 초기값을 value로 전달!
+        options=record_options, # [('Label', 'Value_ID'), ...]
+        format_func=lambda x: x[0].split(" (")[0], # x는 (Label, Value_ID) 튜플
+        key="sharing_multiselect", # 이 key로 st.session_state에 선택된 Value_ID 리스트가 저장됨
+        # !!! 중요한 변경: value= 매개변수를 완전히 제거 !!!
+        # 이제 st.multiselect는 자신의 key (sharing_multiselect)를 통해
+        # st.session_state의 값을 읽고 쓰도록 합니다.
     )
 
     st.subheader("방 설정")
