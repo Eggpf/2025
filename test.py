@@ -285,7 +285,7 @@ def render_search_and_record_page():
             else:
                 st.info("검색 결과가 없습니다. 직접 기록하기를 이용해보세요.")
         elif search_type == "책":
-            results = search_books(search_query) # `query` 변수명을 `search_query`로 일관성 있게 사용
+            results = search_books(search_query) # `search_query` 사용
             if results:
                 st.write(f"총 {len(results)}건의 책을 찾았습니다.")
                 for i, book in enumerate(results):
@@ -330,30 +330,31 @@ def render_create_sharing_room_page(username):
     # 현재 유효한 모든 기록 ID 목록을 Set 형태로 생성 (성능 최적화)
     all_available_record_ids_set = {option[1] for option in record_options}
 
-    # st.multiselect에 전달할 초기값 (value 매개변수) 결정
-    # 폼 제출 후 multiselect를 초기화해야 하는 경우 (flag 사용)
+    # === 핵심 로직: st.session_state['sharing_multiselect']의 상태를 완벽하게 관리 ===
+    # 1. 폼 제출 후 multiselect를 초기화해야 하는 경우 (clear_sharing_multiselect_flag 사용)
     if st.session_state.get('clear_sharing_multiselect_flag', False):
-        initial_multiselect_value = []
-        # 플래그 사용 후 바로 초기화하여 다음 렌더링에서 다시 초기화되지 않도록 함
-        del st.session_state['clear_sharing_multiselect_flag'] 
+        st.session_state['sharing_multiselect'] = [] # 직접 빈 리스트로 초기화
+        del st.session_state['clear_sharing_multiselect_flag'] # 플래그 초기화 (다시 실행되지 않도록)
     else:
-        # 이전에 선택했던 값이 세션 상태에 있다면 가져옴
-        # .get() 메서드로 'sharing_multiselect'가 없을 때 빈 리스트를 기본값으로 지정하여 KeyError 방지
-        stored_selected_ids = st.session_state.get('sharing_multiselect', []) 
+        # 2. 그렇지 않은 경우, 기존 선택값을 가져와 현재 유효한 옵션만 필터링
+        # st.session_state['sharing_multiselect']가 존재하지 않거나, 리스트가 아니면 빈 리스트로 초기화하여 안전성 확보
+        if 'sharing_multiselect' not in st.session_state or not isinstance(st.session_state['sharing_multiselect'], list):
+            st.session_state['sharing_multiselect'] = []
         
-        # 저장된 선택값 중 현재 유효한(현재 기록 목록에 존재하는) 값들만 필터링
-        # 이 필터링이 TypeError를 방지하는 핵심 로직
-        initial_multiselect_value = [
-            record_id for record_id in stored_selected_ids
+        # 저장된 선택값 중 현재 유효한(현재 기록 목록에 존재하는) 값들만 필터링하여 다시 저장
+        filtered_selections = [
+            record_id for record_id in st.session_state['sharing_multiselect']
             if record_id in all_available_record_ids_set
         ]
-        
+        st.session_state['sharing_multiselect'] = filtered_selections
+    
+    # st.multiselect를 호출: value 매개변수 없이 key를 통한 session_state 관리만 의존
     selected_record_ids = st.multiselect(
         "공유방에 포함할 기록물을 선택해주세요 (여러 개 선택 가능):",
         options=record_options, # [('Label', 'Value_ID'), ...]
         format_func=lambda x: x[0].split(" (")[0], # x는 (Label, Value_ID) 튜플
         key="sharing_multiselect", # 이 key로 st.session_state에 선택된 Value_ID 리스트가 저장됨
-        value=initial_multiselect_value # <--- 필터링된 유효한 값들의 리스트를 전달!
+        # value= 매개변수를 제거하여 key를 통한 자동 관리에 전적으로 의존
     )
 
     st.subheader("방 설정")
@@ -379,7 +380,7 @@ def render_create_sharing_room_page(username):
                     "sharing_link": sharing_link,
                     "room_password": room_password
                 }
-                # multiselect를 초기화하도록 지시하는 플래그 설정
+                # multiselect를 초기화하도록 지시하는 플래그 설정 (다음 렌더링 사이클에 반영)
                 st.session_state['clear_sharing_multiselect_flag'] = True 
                 
                 # 페이지를 다시 로드하여 성공 메시지 표시 및 폼 초기화 (UI 업데이트)
@@ -499,9 +500,7 @@ def main():
     if 'clear_sharing_multiselect_flag' not in st.session_state:
         st.session_state['clear_sharing_multiselect_flag'] = False
     # sharing_multiselect 위젯 자체의 값은 key="sharing_multiselect"에 의해 자동으로 관리되므로,
-    # 여기서는 초기 상태를 보장하기 위해 빈 리스트로 직접 설정하지 않고,
-    # 위젯이 로드될 때 value= 매개변수를 통해 제어합니다.
-    # 하지만 만약을 대비해서 해당 키가 없으면 빈 리스트로 시작하도록 하는 것이 안전
+    # 만약을 대비해서 해당 키가 없으면 빈 리스트로 시작하도록 하는 것이 안전
     if 'sharing_multiselect' not in st.session_state:
         st.session_state['sharing_multiselect'] = []
 
