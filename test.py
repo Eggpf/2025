@@ -209,7 +209,7 @@ def render_manual_entry_form(username):
                 return
             
             new_record = {
-                "id": str(uuid.uuid4()), # 고유 ID 생성 (UUID 사용)
+                "id": str(uuid.uuid4()),
                 "type": record_type,
                 "title": title,
                 "director_author": director_author,
@@ -293,17 +293,12 @@ def render_create_sharing_room_page(username):
         return
 
     st.subheader(f"✨ {username}님의 기록물")
-    # 사용자의 기록물 중 공유할 것을 선택
-    # Multi-select 옵션을 위해 (label, value) 형태로 변환
     record_options = [(f"{r['title']} ({r['recorded_date'].split(' ')[0]})", r['id']) for r in user_records]
     
-    # 기록 ID 목록과 실제 Record 객체를 매핑하는 딕셔너리 생성 (나중에 선택된 ID로 Record를 찾기 위함)
-    record_id_map = {r['id']: r for r in user_records}
-
     selected_record_ids = st.multiselect(
         "공유방에 포함할 기록물을 선택해주세요:",
         options=record_options,
-        format_func=lambda x: x.split(" (")[0] # 보여지는 이름은 제목만
+        format_func=lambda x: x.split(" (")[0]
     )
 
     if not selected_record_ids:
@@ -324,15 +319,32 @@ def render_create_sharing_room_page(username):
             else:
                 room_id = create_sharing_room(username, room_name, room_password, selected_record_ids)
                 
-                # 현재 앱의 주소를 가져와서 링크 생성 (예: http://localhost:8501)
-                # 실제 배포 시에는 배포된 앱의 주소로 바꿔야 함
-                base_url = "http://localhost:8501" # TODO: 실제 배포 주소로 변경 필요
-                sharing_link = f"{base_url}?room_id={room_id}"
+                # st.experimental_get_query_params() 대신 st.query_params 사용
+                current_query_params = st.query_params.to_dict() # 딕셔너리로 변환
+                # room_id를 query_params에 추가
+                current_query_params["room_id"] = room_id 
+                # 새로운 query_params를 이용하여 URL 생성
+                
+                # base_url을 Streamlit이 실행되고 있는 호스트로 자동 구성 (더 유연함)
+                # 배포 환경에서는 PUBLIC_URL 환경변수 등을 사용할 수 있음
+                # 로컬에서는 http://localhost:8501이 됨
+                # 이 부분이 실제 배포 환경에 따라 달라질 수 있으니 주의 필요!
+                # st.PageLink 같은 새 API를 사용하면 더 좋지만, 현재 로직에서는 이렇게 처리
+                # https://docs.streamlit.io/library/api-reference/utilities/st.pagelink
+
+                # 임시방편으로 current_url을 사용하는 방식 (로컬 환경에서 주로 유효)
+                # 실제 배포 환경에서는 base_url = "https://your-deployed-app-url.streamlit.app" 와 같이 명시하는 것이 좋습니다.
+                # 예시를 위해 단순하게 '/'를 사용. 이 경우 query_params는 자동으로 붙습니다.
+                sharing_link = f"/?room_id={room_id}" # 이렇게만 해도 Streamlit이 현재 주소에 쿼리 파라미터를 추가하여 URL 생성
 
                 st.success(f"'{room_name}' 공유방이 성공적으로 만들어졌습니다! 🎉")
                 st.write(f"아래 링크를 친구들에게 공유해주세요. (비밀번호: {room_password if room_password else '없음'})")
                 st.code(sharing_link)
-                st.markdown(f"[클릭하여 공유방 바로가기]({sharing_link})", unsafe_allow_html=True)
+                # 실제 URL을 생성하기 위해 `st.experimental_get_query_params()`와 유사하게 작동하는
+                # Streamlit의 내부 메커니즘을 이용하거나, PageLink를 사용할 수 있습니다.
+                # 현재 PageLink는 st.set_page_config에서 page= 지정 시 사용 가능하므로,
+                # 여기서는 링크를 직접 구성하여 보여주겠습니다.
+                st.markdown(f"[클릭하여 공유방 바로가기]({sharing_link})", unsafe_allow_html=True) # 클릭 가능한 링크 제공
 
                 st.info("이 페이지에서 나중에 공유방 관리(생성/삭제/수정) 기능을 추가할 수 있습니다.")
                 st.session_state['current_page'] = "🤝 감상 공유방" # 현재 페이지 유지
@@ -340,8 +352,10 @@ def render_create_sharing_room_page(username):
 
 # --- NEW: Sharing Room Viewer Page ---
 def render_sharing_room_viewer():
-    query_params = st.experimental_get_query_params()
-    room_id = query_params.get("room_id", [None])[0]
+    # st.experimental_get_query_params() 대신 st.query_params 사용
+    query_params = st.query_params # st.query_params는 딕셔너리처럼 동작
+
+    room_id = query_params.get("room_id") # get() 메서드로 바로 값을 가져옴
 
     if not room_id:
         st.error("유효하지 않은 공유방 링크입니다. 올바른 링크를 사용해주세요.")
@@ -357,15 +371,19 @@ def render_sharing_room_viewer():
     st.write(f"_{room_data['creator_username']}님의 감상_")
     
     # 비밀번호 확인 로직
+    # session_state에 현재 접속하려는 room_id에 대한 인증 상태를 저장
     if room_data['room_password']:
-        if 'room_authenticated' not in st.session_state or st.session_state.room_authenticated != room_id:
+        # 'room_authenticated_for_ROOM_ID' 형식으로 키 생성
+        auth_key = f"room_authenticated_{room_id}"
+        
+        if auth_key not in st.session_state or not st.session_state[auth_key]:
             with st.form("room_password_form"):
                 entered_password = st.text_input("공유방 비밀번호를 입력해주세요:", type="password", key="room_pass_input")
                 auth_button = st.form_submit_button("접속")
                 
                 if auth_button:
                     if entered_password == room_data['room_password']:
-                        st.session_state.room_authenticated = room_id
+                        st.session_state[auth_key] = True # 해당 방에 대한 인증 성공 표시
                         st.rerun()
                     else:
                         st.error("비밀번호가 올바르지 않습니다.")
@@ -378,7 +396,6 @@ def render_sharing_room_viewer():
     all_creator_records = load_user_records(creator_username)
     shared_record_ids = room_data['shared_record_ids']
     
-    # 공유된 기록물만 필터링
     shared_records = [r for r in all_creator_records if r['id'] in shared_record_ids]
 
     if shared_records:
@@ -411,8 +428,9 @@ def main():
     st.set_page_config(page_title="나만의 기록 앱", page_icon="📝", layout="wide")
 
     # URL 쿼리 파라미터에서 room_id 확인
-    query_params = st.experimental_get_query_params()
-    room_id_from_url = query_params.get("room_id", [None])[0]
+    # st.experimental_get_query_params() 대신 st.query_params 사용
+    query_params = st.query_params # st.query_params는 딕셔너리처럼 동작
+    room_id_from_url = query_params.get("room_id") # get() 메서드로 바로 값을 가져옴
 
     # session_state 초기화
     if 'logged_in' not in st.session_state:
@@ -420,7 +438,7 @@ def main():
     if 'username' not in st.session_state:
         st.session_state['username'] = None
     if 'current_page' not in st.session_state:
-        st.session_state['current_page'] = "📖 내 기록 보기" # 기본 페이지
+        st.session_state['current_page'] = "📖 내 기록 보기"
 
     # 수동 입력 폼 관련 세션 스테이트 초기화 (맨 위로 이동)
     if 'manual_entry_title' not in st.session_state: st.session_state['manual_entry_title'] = ''
@@ -443,16 +461,17 @@ def main():
                 st.session_state['username'] = None
                 st.session_state['current_page'] = "📖 내 기록 보기"
                 st.session_state['manual_entry_mode'] = False
-                # 공유방 인증 세션도 초기화
-                if 'room_authenticated' in st.session_state:
-                    del st.session_state['room_authenticated']
+                # 모든 공유방 인증 세션 초기화 (접속했던 방의 비밀번호도 초기화)
+                for key in list(st.session_state.keys()):
+                    if key.startswith('room_authenticated_'):
+                        del st.session_state[key]
                 st.rerun()
 
             # 사이드바에서 페이지 선택 라디오 버튼
             st.sidebar.markdown("---")
             selected_page = st.sidebar.radio(
                 "메뉴",
-                ["📖 내 기록 보기", "🔍 작품 검색 및 기록", "🤝 감상 공유방", "✨ 인기 작품 보기"], # 새 메뉴 추가
+                ["📖 내 기록 보기", "🔍 작품 검색 및 기록", "🤝 감상 공유방", "✨ 인기 작품 보기"],
                 key="main_menu_radio"
             )
             st.session_state['current_page'] = selected_page
@@ -490,7 +509,7 @@ def main():
 
             elif st.session_state['current_page'] == "🔍 작품 검색 및 기록":
                 render_search_and_record_page()
-            elif st.session_state['current_page'] == "🤝 감상 공유방": # 새 메뉴 클릭 시
+            elif st.session_state['current_page'] == "🤝 감상 공유방":
                 render_create_sharing_room_page(st.session_state['username'])
             elif st.session_state['current_page'] == "✨ 인기 작품 보기":
                 st.title("✨ 인기 작품 보기")
