@@ -1,5 +1,4 @@
 import streamlit as st
-import pandas as pd
 import json
 import os
 import requests
@@ -7,54 +6,61 @@ from datetime import datetime
 import uuid # 고유 ID 생성을 위해 추가
 
 # --- Constants ---
-USER_DATA_FILE = 'users.json'
-SHARING_ROOMS_FILE = 'sharing_rooms.json' # 공유방 정보를 저장할 파일 추가
+USER_DATA_FILE = 'users.json' # 사용자 정보를 저장할 파일
+SHARING_ROOMS_FILE = 'sharing_rooms.json' # 공유방 정보를 저장할 파일
 
 # Google Books API Key (선택 사항)
+# 발급받으셨다면 여기에 넣어주세요. 없어도 책 검색은 작동할 수 있습니다.
 GOOGLE_BOOKS_API_KEY = "YOUR_GOOGLE_BOOKS_API_KEY_HERE"
 
-# --- Helper Functions (기존 함수들) ---
+# --- Helper Functions (사용자 및 기록 파일 관리) ---
 def load_users():
+    """사용자 데이터를 로드합니다."""
     if os.path.exists(USER_DATA_FILE):
         with open(USER_DATA_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
     return {}
 
 def save_users(users):
+    """사용자 데이터를 저장합니다."""
     with open(USER_DATA_FILE, 'w', encoding='utf-8') as f:
         json.dump(users, f, indent=4)
 
 def authenticate_user(username, password):
+    """사용자 인증을 시도합니다."""
     users = load_users()
     if username in users and users[username]['password'] == password:
         return True
     return False
 
 def register_user(username, password):
+    """새로운 사용자를 등록합니다."""
     users = load_users()
     if username in users:
-        return False
+        return False # 이미 존재하는 사용자
     users[username] = {'password': password}
     save_users(users)
     return True
 
-# --- Functions for User Records (기존 함수들) ---
 def get_user_records_file(username):
+    """사용자별 기록 파일 경로를 반환합니다."""
     return f'{username}_records.json'
 
 def load_user_records(username):
+    """특정 사용자의 기록을 로드합니다."""
     records_file = get_user_records_file(username)
     if os.path.exists(records_file):
         with open(records_file, 'r', encoding='utf-8') as f:
             return json.load(f)
-    return []
+    return [] # 파일이 없으면 빈 리스트 반환
 
 def save_user_records(username, records):
+    """특정 사용자의 기록을 저장합니다."""
     records_file = get_user_records_file(username)
     with open(records_file, 'w', encoding='utf-8') as f:
-        json.dump(records, f, indent=4, ensure_ascii=False)
+        json.dump(records, f, indent=4, ensure_ascii=False) # 한글 인코딩 문제 방지
 
-# --- NEW: Functions for Sharing Rooms ---
+# --- Functions for Sharing Rooms ---
 def load_sharing_rooms():
     """공유방 데이터를 로드합니다."""
     if os.path.exists(SHARING_ROOMS_FILE):
@@ -87,39 +93,53 @@ def get_sharing_room(room_id):
     rooms = load_sharing_rooms()
     return rooms.get(room_id)
 
-# --- Search Functions (변경 없음) ---
+# --- Search Functions ---
 def search_movies(query):
+    """TMDB API를 이용해 영화를 검색합니다. (API Key 없어도 작동 시도)"""
+    # TMDB는 API 키 없이는 대부분의 기능을 제대로 사용할 수 없습니다.
+    # 이 함수는 예시를 위한 것으로, 실제 사용시에는 API 키 발급이 권장됩니다.
     url = f"https://api.themoviedb.org/3/search/movie"
-    params = {"query": query, "language": "ko-KR"}
+    params = {
+        # "api_key": "YOUR_TMDB_API_KEY_HERE", # 실제 TMDB API Key를 발급받으면 여기에 입력
+        "query": query,
+        "language": "ko-KR"
+    }
     try:
-        response = requests.get(url, params=params, timeout=5)
+        response = requests.get(url, params=params, timeout=5) # 타임아웃 추가
         if response.status_code == 200:
-            return response.json().get('results', [])
+            results = response.json().get('results', [])
+            return results
         else:
-            st.warning(f"영화 검색에 실패했습니다 (코드: {response.status_code}). 수동 입력을 이용해보세요.")
+            st.warning(f"영화 검색에 실패했습니다 (코드: {response.status_code}). API Key 없이는 불안정할 수 있습니다. 수동 입력을 이용해보세요.")
             return []
     except requests.exceptions.RequestException as e:
-        st.warning(f"영화 검색 요청 중 오류 발생: {e}. 수동 입력을 이용해보세요.")
+        st.warning(f"영화 검색 요청 중 오류 발생: {e}. 인터넷 연결 또는 API 문제일 수 있습니다. 수동 입력을 이용해보세요.")
         return []
 
 def search_books(query):
+    """Google Books API를 이용해 책을 검색합니다."""
     url = f"https://www.googleapis.com/books/v1/volumes"
-    params = {"q": query, "langRestrict": "ko"}
-    if GOOGLE_BOOKS_API_KEY:
+    params = {
+        "q": query,
+        "langRestrict": "ko"
+    }
+    if GOOGLE_BOOKS_API_KEY and GOOGLE_BOOKS_API_KEY != "YOUR_GOOGLE_BOOKS_API_KEY_HERE":
         params["key"] = GOOGLE_BOOKS_API_KEY
+    
     try:
-        response = requests.get(url, params=params, timeout=5)
+        response = requests.get(url, params=params, timeout=5) # 타임아웃 추가
         if response.status_code == 200:
             return response.json().get('items', [])
         else:
             st.warning(f"책 검색에 실패했습니다 (코드: {response.status_code}). 수동 입력을 이용해보세요.")
             return []
     except requests.exceptions.RequestException as e:
-        st.warning(f"책 검색 요청 중 오류 발생: {e}. 수동 입력을 이용해보세요.")
+        st.warning(f"책 검색 요청 중 오류 발생: {e}. 인터넷 연결 또는 API 문제일 수 있습니다. 수동 입력을 이용해보세요.")
         return []
 
-# --- Display Search Results (기록하기 버튼 클릭 시 st.session_state 미리 채움) ---
+# --- Display Search Results & Pre-fill Manual Form ---
 def display_movie_result(movie):
+    """검색된 영화 정보를 표시하고 기록하기 버튼으로 수동 입력 폼을 채웁니다."""
     title = movie.get('title')
     overview = movie.get('overview')
     release_date = movie.get('release_date')
@@ -131,15 +151,16 @@ def display_movie_result(movie):
     if st.button(f"'{title}' 정보로 기록하기", key=f"movie_record_{movie.get('id')}"):
         st.session_state['manual_entry_title'] = title
         st.session_state['manual_entry_type'] = '영화'
-        st.session_state['manual_entry_director_author'] = ''
+        st.session_state['manual_entry_director_author'] = '' 
         st.session_state['manual_entry_release_pub_date'] = release_date
         st.session_state['manual_entry_image_url'] = f"https://image.tmdb.org/t/p/w200{poster_path}" if poster_path else ''
-        st.session_state['manual_entry_summary'] = overview
+        st.session_state['manual_entry_summary'] = overview 
         st.session_state['manual_entry_mode'] = True
-        st.session_state['current_page'] = "🔍 작품 검색 및 기록"
+        st.session_state['current_page'] = "🔍 작품 검색 및 기록" # 현재 페이지 유지
         st.rerun()
 
 def display_book_result(book):
+    """검색된 책 정보를 표시하고 기록하기 버튼으로 수동 입력 폼을 채웁니다."""
     volume_info = book.get('volumeInfo', {})
     title = volume_info.get('title')
     authors = volume_info.get('authors', ['저자 미상'])
@@ -159,15 +180,17 @@ def display_book_result(book):
         st.session_state['manual_entry_image_url'] = thumbnail if thumbnail else ''
         st.session_state['manual_entry_summary'] = description
         st.session_state['manual_entry_mode'] = True
-        st.session_state['current_page'] = "🔍 작품 검색 및 기록"
+        st.session_state['current_page'] = "🔍 작품 검색 및 기록" # 현재 페이지 유지
         st.rerun()
 
-# --- Manual Entry Page (변경 없음) ---
+# --- Manual Entry Form ---
 def render_manual_entry_form(username):
+    """사용자가 직접 작품 정보를 입력하고 저장하는 폼을 렌더링합니다."""
     st.subheader("📝 작품 수동 기록하기")
     st.info("검색되지 않거나 직접 입력하고 싶은 작품의 정보를 기록해보세요. 이미지 URL을 넣으면 포스터/표지도 함께 볼 수 있습니다!")
 
     with st.form("manual_record_form"):
+        # 기존 세션 스테이트에서 값 불러오기 (검색 결과에서 가져왔을 경우)
         default_title = st.session_state.get('manual_entry_title', '')
         default_type = st.session_state.get('manual_entry_type', '영화')
         default_director_author = st.session_state.get('manual_entry_director_author', '')
@@ -196,7 +219,7 @@ def render_manual_entry_form(username):
         
         image_url = st.text_input("이미지 URL (포스터/표지 URL을 직접 입력하세요)", value=default_image_url, key="manual_image_url")
         if image_url:
-            st.image(image_url, width=150, caption="미리보기")
+            st.image(image_url, width=150, caption="미리보기") # 이미지 미리보기
         
         rating = st.slider("나의 평점 (1점은 최악, 5점은 최고)", 1, 5, 3, key="manual_rating")
         review = st.text_area("나의 감상/기록", value=default_summary, key="manual_review")
@@ -208,8 +231,9 @@ def render_manual_entry_form(username):
                 st.error("제목은 필수로 입력해야 합니다!")
                 return
             
+            # 새 기록 데이터 구성
             new_record = {
-                "id": str(uuid.uuid4()),
+                "id": str(uuid.uuid4()), # 고유 ID 생성 (UUID 사용)
                 "type": record_type,
                 "title": title,
                 "director_author": director_author,
@@ -226,16 +250,19 @@ def render_manual_entry_form(username):
             save_user_records(username, records)
             st.success(f"'{title}' 작품 기록이 성공적으로 저장되었습니다!")
             
+            # 입력 폼 초기화 (검색 결과에서 가져온 값도 초기화)
             st.session_state['manual_entry_title'] = ''
             st.session_state['manual_entry_type'] = '영화'
             st.session_state['manual_entry_director_author'] = ''
             st.session_state['manual_entry_release_pub_date'] = ''
             st.session_state['manual_entry_image_url'] = ''
             st.session_state['manual_entry_summary'] = ''
-            st.session_state['manual_entry_mode'] = False
-            st.rerun()
+            st.session_state['manual_entry_mode'] = False # 폼 접기
+            st.rerun() # 화면 새로고침하여 초기화된 폼 보여주기
 
+# --- Main Search and Record Page ---
 def render_search_and_record_page():
+    """작품 검색 및 기록 페이지를 렌더링합니다."""
     st.title("🔍 작품 검색 및 기록")
     
     if 'manual_entry_mode' not in st.session_state:
@@ -249,6 +276,7 @@ def render_search_and_record_page():
         search_button = st.form_submit_button(f"{search_type} 검색")
 
     if search_button and search_query:
+        # st.write("--- 디버깅 메시지 시작 (검색) ---") # 디버깅용
         st.write(f"'{search_query}'(으)로 {search_type}을(를) 검색 중입니다...")
         if search_type == "영화":
             results = search_movies(search_query)
@@ -272,8 +300,9 @@ def render_search_and_record_page():
     elif search_button and not search_query:
         st.warning("검색어를 입력해주세요!")
         
-    st.markdown("---")
+    st.markdown("---") # 구분선
 
+    # 수동 입력 폼을 Expander로 감싸서 필요할 때만 보이게
     manual_entry_expander = st.expander(
         "혹은 직접 기록하기 ✍️", 
         expanded=st.session_state['manual_entry_mode']
@@ -281,8 +310,7 @@ def render_search_and_record_page():
     with manual_entry_expander:
         render_manual_entry_form(st.session_state['username'])
 
-
-# --- NEW: Sharing Room Creation Page ---
+# --- Sharing Room Creation Page ---
 def render_create_sharing_room_page(username):
     st.title("🎉 새 감상 공유방 만들기")
     st.info("나만의 감상 공유방을 만들고 친구들에게 링크를 공유해보세요!")
@@ -293,68 +321,52 @@ def render_create_sharing_room_page(username):
         return
 
     st.subheader(f"✨ {username}님의 기록물")
+    # multiselect의 options는 (label, value) 튜플 리스트여야 함
     record_options = [(f"{r['title']} ({r['recorded_date'].split(' ')[0]})", r['id']) for r in user_records]
     
+    # st.multiselect는 폼 외부에 있어도 폼 제출 시 값을 가져올 수 있음
     selected_record_ids = st.multiselect(
-        "공유방에 포함할 기록물을 선택해주세요:",
+        "공유방에 포함할 기록물을 선택해주세요 (여러 개 선택 가능):",
         options=record_options,
-        format_func=lambda x: x[0].split(" (")[0] # x[0]으로 튜플의 첫 번째 요소를 지정
+        format_func=lambda x: x[0].split(" (")[0], # 튜플의 첫 번째 요소(문자열)에 split 적용
+        key="sharing_multiselect" # Key 추가
     )
-
-    if not selected_record_ids:
-        st.warning("공유할 기록물을 최소 한 개 이상 선택해주세요.")
 
     st.subheader("방 설정")
     with st.form("create_room_form"):
-        room_name = st.text_input("공유방 이름 (예: 명작 탐험대, 인생 영화 모음)", max_chars=50)
-        room_password = st.text_input("공유방 비밀번호 (선택 사항)", type="password", help="비밀번호를 설정하면 링크를 아는 사람도 비밀번호를 입력해야 접속할 수 있습니다.")
+        room_name = st.text_input("공유방 이름 (예: 명작 탐험대, 인생 영화 모음)", max_chars=50, key="room_name_input")
+        room_password = st.text_input("공유방 비밀번호 (선택 사항)", type="password", help="비밀번호를 설정하면 링크를 아는 사람도 비밀번호를 입력해야 접속할 수 있습니다.", key="room_password_input")
+        
         submit_button = st.form_submit_button("공유방 만들기!")
 
         if submit_button:
-            st.write("--- 디버깅 메시지 시작 ---") # ✨ 이 줄 추가!
-            st.write(f"공유방 이름: '{room_name}'") # ✨ 이 줄 추가!
-            st.write(f"선택된 기록물 ID: {selected_record_ids}") # ✨ 이 줄 추가!
+            # st.write("--- 디버깅 메시지 시작 (공유방 만들기) ---") # 디버깅용
+            # st.write(f"공유방 이름: '{room_name}'") # 디버깅용
+            # st.write(f"선택된 기록물 ID: {selected_record_ids}") # 디버깅용
 
             if not room_name:
                 st.error("공유방 이름을 입력해주세요!")
-            elif not selected_record_ids:
-                st.error("공유할 기록물을 한 개 이상 선택해주세요!")
+            elif not selected_record_ids: # 선택된 기록물 리스트가 비어있을 경우
+                st.error("공유할 기록물을 최소 한 개 이상 선택해주세요!")
             else:
-                st.write("모든 유효성 검사 통과! 공유방 생성 진행.") # ✨ 이 줄 추가!
+                # 모든 유효성 검사 통과
+                # st.write("모든 유효성 검사 통과! 공유방 생성 진행.") # 디버깅용
                 room_id = create_sharing_room(username, room_name, room_password, selected_record_ids)
                 
-                # st.experimental_get_query_params() 대신 st.query_params 사용
-                current_query_params = st.query_params.to_dict() # 딕셔너리로 변환
-                # room_id를 query_params에 추가
-                current_query_params["room_id"] = room_id 
-                # 새로운 query_params를 이용하여 URL 생성
-                
-                # base_url을 Streamlit이 실행되고 있는 호스트로 자동 구성 (더 유연함)
-                # 배포 환경에서는 PUBLIC_URL 환경변수 등을 사용할 수 있음
-                # 로컬에서는 http://localhost:8501이 됨
-                # 이 부분이 실제 배포 환경에 따라 달라질 수 있으니 주의 필요!
-                # st.PageLink 같은 새 API를 사용하면 더 좋지만, 현재 로직에서는 이렇게 처리
-                # https://docs.streamlit.io/library/api-reference/utilities/st.pagelink
-
-                # 임시방편으로 current_url을 사용하는 방식 (로컬 환경에서 주로 유효)
-                # 실제 배포 환경에서는 base_url = "https://your-deployed-app-url.streamlit.app" 와 같이 명시하는 것이 좋습니다.
-                # 예시를 위해 단순하게 '/'를 사용. 이 경우 query_params는 자동으로 붙습니다.
-                sharing_link = f"/?room_id={room_id}" # 이렇게만 해도 Streamlit이 현재 주소에 쿼리 파라미터를 추가하여 URL 생성
+                # Streamlit의 쿼리 파라미터는 앱의 기본 경로에 자동 적용되므로,
+                # 상대 경로로 쿼리 파라미터만 추가하는 방식으로 링크 생성
+                sharing_link = f"/?room_id={room_id}" 
 
                 st.success(f"'{room_name}' 공유방이 성공적으로 만들어졌습니다! 🎉")
                 st.write(f"아래 링크를 친구들에게 공유해주세요. (비밀번호: {room_password if room_password else '없음'})")
                 st.code(sharing_link)
-                # 실제 URL을 생성하기 위해 `st.experimental_get_query_params()`와 유사하게 작동하는
-                # Streamlit의 내부 메커니즘을 이용하거나, PageLink를 사용할 수 있습니다.
-                # 현재 PageLink는 st.set_page_config에서 page= 지정 시 사용 가능하므로,
-                # 여기서는 링크를 직접 구성하여 보여주겠습니다.
-                st.markdown(f"[클릭하여 공유방 바로가기]({sharing_link})", unsafe_allow_html=True) # 클릭 가능한 링크 제공
+                st.markdown(f"[클릭하여 공유방 바로가기]({sharing_link})", unsafe_allow_html=True)
 
                 st.info("이 페이지에서 나중에 공유방 관리(생성/삭제/수정) 기능을 추가할 수 있습니다.")
                 st.session_state['current_page'] = "🤝 감상 공유방" # 현재 페이지 유지
-                st.rerun()
+                st.rerun() # 성공 시에만 rerun
 
-# --- NEW: Sharing Room Viewer Page ---
+# --- Sharing Room Viewer Page ---
 def render_sharing_room_viewer():
     # st.experimental_get_query_params() 대신 st.query_params 사용
     query_params = st.query_params # st.query_params는 딕셔너리처럼 동작
@@ -377,7 +389,6 @@ def render_sharing_room_viewer():
     # 비밀번호 확인 로직
     # session_state에 현재 접속하려는 room_id에 대한 인증 상태를 저장
     if room_data['room_password']:
-        # 'room_authenticated_for_ROOM_ID' 형식으로 키 생성
         auth_key = f"room_authenticated_{room_id}"
         
         if auth_key not in st.session_state or not st.session_state[auth_key]:
@@ -426,15 +437,13 @@ def render_sharing_room_viewer():
     else:
         st.info("이 공유방에는 아직 공유된 기록물이 없습니다.")
 
-
-# --- Streamlit App (main 함수 수정) ---
+# --- Main App Logic ---
 def main():
     st.set_page_config(page_title="나만의 기록 앱", page_icon="📝", layout="wide")
 
     # URL 쿼리 파라미터에서 room_id 확인
-    # st.experimental_get_query_params() 대신 st.query_params 사용
-    query_params = st.query_params # st.query_params는 딕셔너리처럼 동작
-    room_id_from_url = query_params.get("room_id") # get() 메서드로 바로 값을 가져옴
+    query_params = st.query_params
+    room_id_from_url = query_params.get("room_id")
 
     # session_state 초기화
     if 'logged_in' not in st.session_state:
@@ -444,7 +453,7 @@ def main():
     if 'current_page' not in st.session_state:
         st.session_state['current_page'] = "📖 내 기록 보기"
 
-    # 수동 입력 폼 관련 세션 스테이트 초기화 (맨 위로 이동)
+    # 수동 입력 폼 관련 세션 스테이트 초기화 (값을 미리 채울 때 사용)
     if 'manual_entry_title' not in st.session_state: st.session_state['manual_entry_title'] = ''
     if 'manual_entry_type' not in st.session_state: st.session_state['manual_entry_type'] = '영화'
     if 'manual_entry_director_author' not in st.session_state: st.session_state['manual_entry_director_author'] = ''
@@ -453,7 +462,7 @@ def main():
     if 'manual_entry_summary' not in st.session_state: st.session_state['manual_entry_summary'] = ''
     if 'manual_entry_mode' not in st.session_state: st.session_state['manual_entry_mode'] = False
 
-    # 공유방 접속 시 별도 처리
+    # 공유방 접속 시 별도 처리 (로그인 없이 바로 방으로 이동)
     if room_id_from_url:
         render_sharing_room_viewer()
     else: # 일반 앱 흐름 (로그인 필요)
@@ -480,13 +489,13 @@ def main():
             )
             st.session_state['current_page'] = selected_page
 
-            # 메인 콘텐츠 영역
+            # 메인 콘텐츠 영역 (선택된 페이지에 따라 다른 함수 호출)
             if st.session_state['current_page'] == "📖 내 기록 보기":
                 st.title("📖 내 기록 보기")
                 user_records = load_user_records(st.session_state['username'])
                 if user_records:
                     st.write(f"{st.session_state['username']}님의 소중한 기록들을 보여드릴게요.")
-                    for i, record in enumerate(user_records):
+                    for record in user_records: # enumerate 삭제
                         with st.expander(f"{record.get('title')} ({record.get('recorded_date').split(' ')[0]})"):
                             st.write(f"**종류:** {record.get('type')}")
                             st.write(f"**제목:** {record.get('title')}")
@@ -521,7 +530,7 @@ def main():
                 st.info("인기 작품 목록은 나중에 구현될 예정입니다.")
 
         else:
-            # --- 로그인/회원가입 페이지 (기존과 동일) ---
+            # --- 로그인/회원가입 페이지 ---
             st.title("📝 나만의 기록 앱 로그인/회원가입")
             st.subheader("계정이 있으시면 로그인해주세요.")
 
