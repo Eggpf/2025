@@ -285,7 +285,7 @@ def render_search_and_record_page():
             else:
                 st.info("검색 결과가 없습니다. 직접 기록하기를 이용해보세요.")
         elif search_type == "책":
-            results = search_books(query) # `query`를 `search_query`로 수정
+            results = search_books(search_query) # `query` 변수명을 `search_query`로 일관성 있게 사용
             if results:
                 st.write(f"총 {len(results)}건의 책을 찾았습니다.")
                 for i, book in enumerate(results):
@@ -331,8 +331,6 @@ def render_create_sharing_room_page(username):
     all_available_record_ids_set = {option[1] for option in record_options}
 
     # st.multiselect에 전달할 초기값 (value 매개변수) 결정
-    initial_multiselect_value = []
-    
     # 폼 제출 후 multiselect를 초기화해야 하는 경우 (flag 사용)
     if st.session_state.get('clear_sharing_multiselect_flag', False):
         initial_multiselect_value = []
