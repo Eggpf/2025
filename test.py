@@ -327,23 +327,32 @@ def render_create_sharing_room_page(username):
     st.subheader(f"✨ {username}님의 기록물")
     record_options = [(f"{r['title']} ({r['recorded_date'].split(' ')[0]})", r['id']) for r in user_records]
     
-    # st.multiselect의 value가 항상 list 타입이 되도록 보장
-    # clear_sharing_multiselect 플래그가 True면 빈 리스트로 초기화, 아니면 현재 선택된 값 (세션 상태에서 가져옴)
-    current_multiselect_value = []
+    # ----------------------------- ▼ 이곳이 수정된 부분입니다! ▼ -----------------------------
+    # Get a list of all currently available record IDs (the second element of each tuple in record_options)
+    all_available_record_ids = [option[1] for option in record_options]
+
+    # Determine the initial value for st.multiselect's 'value' parameter
+    initial_multiselect_value = []
+    # If clear_sharing_multiselect flag is set (after form submission), initialize to empty list
     if st.session_state.get('clear_sharing_multiselect', False):
-        current_multiselect_value = []
+        initial_multiselect_value = []
         st.session_state['clear_sharing_multiselect'] = False 
     elif 'sharing_multiselect' in st.session_state:
-        # 이전에 선택했던 값이 있다면 불러오기 (값은 ID 리스트 형태여야 함)
-        current_multiselect_value = st.session_state['sharing_multiselect']
+        # Otherwise, take the stored value from session_state.
+        # Importantly, filter this stored value to ensure all items are still valid (exist in all_available_record_ids)
+        initial_multiselect_value = [
+            record_id for record_id in st.session_state['sharing_multiselect']
+            if record_id in all_available_record_ids
+        ]
     
     selected_record_ids = st.multiselect(
         "공유방에 포함할 기록물을 선택해주세요 (여러 개 선택 가능):",
         options=record_options, # [('Label', 'Value_ID'), ...]
         format_func=lambda x: x[0].split(" (")[0], # x는 (Label, Value_ID) 튜플
         key="sharing_multiselect", # 이 key로 session_state에 선택된 Value_ID 리스트가 저장됨
-        value=current_multiselect_value # value에는 선택될 ID들의 리스트가 와야 함
+        value=initial_multiselect_value # <--- 여기가 핵심! 필터링된 유효한 값만 전달
     )
+    # ----------------------------- ▲ 여기까지 수정된 부분입니다! ▲ -----------------------------
 
     st.subheader("방 설정")
     with st.form("create_room_form", clear_on_submit=True): # clear_on_submit=True는 그대로 둠
