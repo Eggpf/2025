@@ -398,8 +398,8 @@ def render_create_sharing_room_page(username):
             success_info = st.session_state['sharing_success_info']
             st.success(f"'{success_info['room_name']}' 공유방이 성공적으로 만들어졌습니다! 🎉")
             st.write(f"아래 링크를 친구들에게 공유해주세요. (비밀번호: {success_info['room_password'] if success_info['room_password'] else '없음'})")
-            st.code(success_info['sharing_link'])
-            st.markdown(f"[클릭하여 공유방 바로가기]({success_info['sharing_link']})", unsafe_allow_html=True)
+            st.code(sharing_link)
+            st.markdown(f"[클릭하여 공유방 바로가기]({sharing_link})", unsafe_allow_html=True)
             st.info("이 페이지에서 나중에 공유방 관리(생성/삭제/수정) 기능을 추가할 수 있습니다.")
             
             # 만약 한 번 보여준 후 다음 리로드 시에는 다시 보이지 않게 하고 싶다면 이 줄 주석 해제
