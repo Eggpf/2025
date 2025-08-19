@@ -314,26 +314,33 @@ def render_create_sharing_room_page(username):
     st.title("🎉 새 감상 공유방 만들기")
     st.info("나만의 감상 공유방을 만들고 친구들에게 링크를 공유해보세요!")
 
+    # ------ 1. 성공 메시지 및 링크를 보여줄 placeholder 설정 ------
+    # 이 empty는 페이지가 리로드 되어도 유지되는 placeholder
+    success_message_placeholder = st.empty() 
+
     user_records = load_user_records(username)
     if not user_records:
         st.warning("공유할 기록물이 없습니다. '작품 검색 및 기록'에서 먼저 기록을 추가해주세요!")
+        # ----- 2. 공유할 기록물이 없으면 성공 메시지 플레이스홀더를 지움 -----
+        if 'sharing_success_info' in st.session_state:
+            del st.session_state['sharing_success_info']
         return
 
     st.subheader(f"✨ {username}님의 기록물")
-    # multiselect의 options는 (label, value) 튜플 리스트여야 함
     record_options = [(f"{r['title']} ({r['recorded_date'].split(' ')[0]})", r['id']) for r in user_records]
     
     # st.multiselect는 폼 외부에 있어도 폼 제출 시 값을 가져올 수 있음
     selected_record_ids = st.multiselect(
         "공유방에 포함할 기록물을 선택해주세요 (여러 개 선택 가능):",
         options=record_options,
-        format_func=lambda x: x[0].split(" (")[0], # 튜플의 첫 번째 요소(문자열)에 split 적용
+        format_func=lambda x: x[0].split(" (")[0], 
         key="sharing_multiselect" # Key 추가
     )
 
     st.subheader("방 설정")
     # clear_on_submit=True 를 추가하여 폼 제출 후 자동으로 필드 초기화
-    with st.form("create_room_form", clear_on_submit=True): # <--- 이 부분 수정!
+    # ----- 3. 폼 제출 시 clear_on_submit=True는 그대로 둠 -----
+    with st.form("create_room_form", clear_on_submit=True): 
         room_name = st.text_input("공유방 이름 (예: 명작 탐험대, 인생 영화 모음)", max_chars=50, key="room_name_input")
         room_password = st.text_input("공유방 비밀번호 (선택 사항)", type="password", help="비밀번호를 설정하면 링크를 아는 사람도 비밀번호를 입력해야 접속할 수 있습니다.", key="room_password_input")
         
@@ -342,35 +349,46 @@ def render_create_sharing_room_page(username):
         if submit_button:
             if not room_name:
                 st.error("공유방 이름을 입력해주세요!")
-            elif not selected_record_ids: # 선택된 기록물 리스트가 비어있을 경우
+            elif not selected_record_ids: 
                 st.error("공유할 기록물을 한 개 이상 선택해주세요!")
             else:
-                # 모든 유효성 검사 통과
                 room_id = create_sharing_room(username, room_name, room_password, selected_record_ids)
-                
                 sharing_link = f"/?room_id={room_id}" 
 
-                st.toast(f"'{room_name}' 공유방이 성공적으로 만들어졌습니다! 🎉", icon="✅") # st.toast로 변경 (깜빡임 개선)
-                st.write(f"아래 링크를 친구들에게 공유해주세요. (비밀번호: {room_password if room_password else '없음'})")
-                st.code(sharing_link)
-                st.markdown(f"[클릭하여 공유방 바로가기]({sharing_link})", unsafe_allow_html=True)
-
-                st.info("이 페이지에서 나중에 공유방 관리(생성/삭제/수정) 기능을 추가할 수 있습니다.")
-                
-                # 오류를 일으켰던 st.session_state 직접 초기화 코드들을 삭제함!
-                # st.session_state['room_name_input'] = ""
-                # st.session_state['room_password_input'] = ""
-                # st.session_state['sharing_multiselect'] = [] 
-                
+                # ----- 4. 성공 메시지/링크 정보를 세션 상태에 저장 -----
+                st.session_state['sharing_success_info'] = {
+                    "room_name": room_name,
+                    "sharing_link": sharing_link,
+                    "room_password": room_password
+                }
                 st.session_state['current_page'] = "🤝 감상 공유방" # 현재 페이지 유지
-                st.rerun() # 성공 시에만 rerun
+                # ----- 5. 성공 메시지를 보여주기 위해 스크립트 리렌더링 (단, st.toast는 사라짐) -----
+                st.rerun() 
+    
+    # ----- 6. 세션 상태에 저장된 성공 메시지 정보를 폼 외부에 표시 -----
+    if 'sharing_success_info' in st.session_state:
+        with success_message_placeholder.container(): # 플레이스홀더를 사용
+            success_info = st.session_state['sharing_success_info']
+            st.success(f"'{success_info['room_name']}' 공유방이 성공적으로 만들어졌습니다! 🎉")
+            st.write(f"아래 링크를 친구들에게 공유해주세요. (비밀번호: {success_info['room_password'] if success_info['room_password'] else '없음'})")
+            st.code(success_info['sharing_link'])
+            st.markdown(f"[클릭하여 공유방 바로가기]({success_info['sharing_link']})", unsafe_allow_html=True)
+            st.info("이 페이지에서 나중에 공유방 관리(생성/삭제/수정) 기능을 추가할 수 있습니다.")
+            
+            # 한 번 보여줬으니, 사용자 재방문시 다시 보이지 않도록 정보 삭제 (선택 사항)
+            # del st.session_state['sharing_success_info'] 
+            # 만약 이 정보를 계속 보여주고 싶다면 주석 처리합니다. (기존 로직은 그대로 유지)
+
+    # st.multiselect 초기화를 위한 꼼수 (submit_button 이후에도 st.multiselect의 선택 값 유지되는 문제 방지)
+    # 폼 제출 후, 폼 바깥에 있는 multiselect가 선택값을 유지하는 문제를 해결
+    # clear_on_submit이 폼 안에 있는 것만 처리하기 때문.
+    if 'room_name_input' not in st.session_state or st.session_state['room_name_input'] == '':
+        st.session_state['sharing_multiselect'] = [] # multiselect 초기화 강제
 
 # --- Sharing Room Viewer Page ---
 def render_sharing_room_viewer():
-    # st.experimental_get_query_params() 대신 st.query_params 사용
-    query_params = st.query_params # st.query_params는 딕셔너리처럼 동작
-
-    room_id = query_params.get("room_id") # get() 메서드로 바로 값을 가져옴
+    query_params = st.query_params 
+    room_id = query_params.get("room_id") 
 
     if not room_id:
         st.error("유효하지 않은 공유방 링크입니다. 올바른 링크를 사용해주세요.")
@@ -385,8 +403,6 @@ def render_sharing_room_viewer():
     st.title(f"✨ 감상 공유방: {room_data['room_name']}")
     st.write(f"_{room_data['creator_username']}님의 감상_")
     
-    # 비밀번호 확인 로직
-    # session_state에 현재 접속하려는 room_id에 대한 인증 상태를 저장
     if room_data['room_password']:
         auth_key = f"room_authenticated_{room_id}"
         
@@ -397,15 +413,14 @@ def render_sharing_room_viewer():
                 
                 if auth_button:
                     if entered_password == room_data['room_password']:
-                        st.session_state[auth_key] = True # 해당 방에 대한 인증 성공 표시
+                        st.session_state[auth_key] = True 
                         st.rerun()
                     else:
                         st.error("비밀번호가 올바르지 않습니다.")
-            return # 비밀번호 입력 폼이 보이면 여기서 함수 종료
+            return 
 
     st.info("이 방은 친구들과 함께 즐기는 공유방입니다. 비밀번호는 만든 사람에게 문의하세요.")
 
-    # 공유된 기록물 표시
     creator_username = room_data['creator_username']
     all_creator_records = load_user_records(creator_username)
     shared_record_ids = room_data['shared_record_ids']
@@ -417,8 +432,9 @@ def render_sharing_room_viewer():
             with st.expander(f"{record.get('title')} ({record.get('recorded_date').split(' ')[0]})"):
                 st.write(f"**종류:** {record.get('type')}")
                 st.write(f"**제목:** {record.get('title')}")
-                if record.get('director_author'):
-                    st.write(f"**{'감독' if record.get('type')=='영화' else '저자'}:** {record.get('director_director_author')}")
+                # "director_author" 필드가 없는 경우 KeyError 방지
+                if record.get('director_author'): 
+                    st.write(f"**{'감독' if record.get('type')=='영화' else '저자'}:** {record.get('director_author')}")
                 if record.get('release_pub_date'):
                     st.write(f"**{'개봉일' if record.get('type')=='영화' else '출판일'}:** {record.get('release_pub_date')}")
                 if record.get('genre'):
@@ -477,6 +493,10 @@ def main():
                 for key in list(st.session_state.keys()):
                     if key.startswith('room_authenticated_'):
                         del st.session_state[key]
+                
+                # 추가: sharing_success_info도 로그아웃 시 초기화 (깜빡임 문제와는 별개지만 정리)
+                if 'sharing_success_info' in st.session_state:
+                    del st.session_state['sharing_success_info']
                 st.rerun()
 
             # 사이드바에서 페이지 선택 라디오 버튼
