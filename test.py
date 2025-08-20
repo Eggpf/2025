@@ -36,7 +36,7 @@ def authenticate_user(username, password):
 
 def register_user(username, password):
     """새로운 사용자를 등록합니다."""
-    users = load_users() # <--- 이곳의 오타 수정! load_load_users() -> load_users()
+    users = load_users() 
     if username in users:
         return False # 이미 존재하는 사용자
     users[username] = {'password': password}
@@ -338,7 +338,7 @@ def render_create_sharing_room_page(username):
     
     # 1. 'clear_sharing_multiselect_flag'가 True이면, multiselect 값을 빈 리스트로 초기화 (새로운 방을 만들 때)
     if st.session_state.get('clear_sharing_multiselect_flag', False):
-        st.session_state['sharing_multiselect'] = [] # st.session_state 값을 직접 빈 리스트로 설정
+        st.session_state['sharing_multiselect'] = [] # session_state 값을 직접 빈 리스트로 설정
         # 플래그는 사용 후 즉시 삭제하여 다음 렌더링에서 다시 초기화되지 않도록 함
         del st.session_state['clear_sharing_multiselect_flag'] 
     else:
@@ -357,11 +357,13 @@ def render_create_sharing_room_page(username):
         st.session_state['sharing_multiselect'] = filtered_selections
     
     selected_record_ids = st.multiselect(
-        "공유방에 포함할 기록물을 선택해주세요 (여러 개 선택 가능):",
+        "공유방에 포함할 기록물을 선택해주세요 (선택 사항):", # <--- "선택 사항"으로 텍스트 변경
         options=record_options, # [('Label', 'Value_ID'), ...]
         format_func=lambda x: x[0].split(" (")[0], # x는 (Label, Value_ID) 튜플
         key="sharing_multiselect", # 이 key로 st.session_state에 선택된 Value_ID 리스트가 저장됨
-        # value= 매개변수는 사용하지 않습니다! (가장 안정적인 방식)
+        # value= 매개변수는 사용하지 않습니다! 
+        # 위에서 st.session_state['sharing_multiselect']를 완벽하게 관리했으므로,
+        # 위젯은 이 값을 읽어 자신의 상태를 표시할 것입니다.
     )
 
     st.subheader("방 설정")
@@ -375,10 +377,11 @@ def render_create_sharing_room_page(username):
         if submit_button:
             if not room_name:
                 st.error("공유방 이름을 입력해주세요!")
-            # selected_record_ids는 st.multiselect의 현재 값을 바로 반영합니다.
-            elif not selected_record_ids: 
-                st.error("공유할 기록물을 최소 한 개 이상 선택해주세요!")
-            else:
+            # ---- ▼ 이 부분이 변경되었습니다! 선택 사항으로 만들기 위해 제거 ▼ ----
+            # elif not selected_record_ids: 
+            #     st.error("공유할 기록물을 최소 한 개 이상 선택해주세요!")
+            # ---- ▲ 이 부분이 변경되었습니다! ▲ ----
+            else: # 이제 기록물 선택 여부와 상관없이 방 생성 가능
                 room_id = create_sharing_room(username, room_name, room_password, selected_record_ids)
                 sharing_link = f"/?room_id={room_id}" 
 
