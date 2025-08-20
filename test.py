@@ -35,7 +35,7 @@ def authenticate_user(username, password):
 
 def register_user(username, password):
     """새로운 사용자를 등록합니다."""
-    users = load_users()
+    users = load_load_users()
     if username in users:
         return False # 이미 존재하는 사용자
     users[username] = {'password': password}
@@ -330,14 +330,13 @@ def render_create_sharing_room_page(username):
     # 현재 유효한 모든 기록 ID 목록 (record_options의 튜플에서 ID 부분만 추출)
     all_available_record_ids_set = {option[1] for option in record_options}
 
-    # === 핵심 로직: st.multiselect의 초기값 및 상태 관리 ===
-    # st.multiselect 위젯은 자신의 'key'에 연결된 st.session_state 값을 자동으로 관리합니다.
-    # 즉, 사용자가 위젯에서 선택/선택 해제할 때마다 st.session_state['sharing_multiselect']의 값이 자동으로 업데이트됩니다.
-    # 저희 로직은 이 st.session_state['sharing_multiselect']의 값을 렌더링될 때 '정리'만 해주면 됩니다.
+    # === 핵심 로직: st.multiselect의 상태 관리 ===
+    # multiselect의 key='sharing_multiselect'를 사용하므로,
+    # st.session_state.sharing_multiselect에 위젯의 선택 상태가 저장됩니다.
 
     # 1. 'clear_sharing_multiselect_flag'가 True이면, multiselect 값을 빈 리스트로 초기화 (새로운 방을 만들 때)
     if st.session_state.get('clear_sharing_multiselect_flag', False):
-        st.session_state['sharing_multiselect'] = [] # st.session_state 값을 직접 빈 리스트로 설정
+        st.session_state['sharing_multiselect'] = [] # session_state 값을 직접 빈 리스트로 설정
         # 플래그는 사용 후 즉시 삭제하여 다음 렌더링에서 다시 초기화되지 않도록 함
         del st.session_state['clear_sharing_multiselect_flag'] 
     else:
@@ -347,8 +346,6 @@ def render_create_sharing_room_page(username):
             st.session_state['sharing_multiselect'] = []
         
         # 저장된 선택값 중 현재 options에 존재하는 유효한 ID들만 필터링하여 session_state에 다시 저장
-        # 이렇게 함으로써, 이전 세션에서 선택했으나 현재는 존재하지 않는 기록물은 자동으로 제거되고
-        # 위젯이 항상 유효한 선택 상태를 유지합니다.
         # 이 필터링은 st.multiselect가 자신의 선택 상태를 읽어들이기 전에 st.session_state를 '정리'하는 역할
         filtered_selections = [
             record_id for record_id in st.session_state['sharing_multiselect']
