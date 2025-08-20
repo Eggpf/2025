@@ -11,7 +11,7 @@ SHARING_ROOMS_FILE = 'sharing_rooms.json' # 공유방 정보를 저장할 파일
 
 # Google Books API Key (선택 사항)
 # 발급받으셨다면 여기에 넣어주세요. 없어도 책 검색은 작동할 수 있습니다.
-GOOGLE_BOOKS_API_KEY = "YOUR_GOOGLE_BOOKS_API_KEY_HERE"
+GOOGLE_BOOKS_API_KEY = st.secrets.get("GOOGLE_BOOKS_API_KEY") # Streamlit Secrets에서 로드
 
 # --- Helper Functions: 파일 기반 데이터 관리 ---
 def load_users():
@@ -331,12 +331,13 @@ def render_create_sharing_room_page(username):
     all_available_record_ids_set = {option[1] for option in record_options}
 
     # === 핵심 로직: st.multiselect의 초기값 및 상태 관리 ===
-    # multiselect의 key='sharing_multiselect'를 사용하므로,
-    # st.session_state.sharing_multiselect에 위젯의 선택 상태가 저장됩니다.
+    # st.multiselect 위젯은 자신의 'key'에 연결된 st.session_state 값을 자동으로 관리합니다.
+    # 즉, 사용자가 위젯에서 선택/선택 해제할 때마다 st.session_state['sharing_multiselect']의 값이 자동으로 업데이트됩니다.
+    # 저희 로직은 이 st.session_state['sharing_multiselect']의 값을 렌더링될 때 '정리'만 해주면 됩니다.
 
-    # 1. 'clear_sharing_multiselect_flag'가 True이면, multiselect 값을 빈 리스트로 초기화
+    # 1. 'clear_sharing_multiselect_flag'가 True이면, multiselect 값을 빈 리스트로 초기화 (새로운 방을 만들 때)
     if st.session_state.get('clear_sharing_multiselect_flag', False):
-        st.session_state['sharing_multiselect'] = [] # session_state 값을 직접 빈 리스트로 설정
+        st.session_state['sharing_multiselect'] = [] # st.session_state 값을 직접 빈 리스트로 설정
         # 플래그는 사용 후 즉시 삭제하여 다음 렌더링에서 다시 초기화되지 않도록 함
         del st.session_state['clear_sharing_multiselect_flag'] 
     else:
@@ -346,23 +347,23 @@ def render_create_sharing_room_page(username):
             st.session_state['sharing_multiselect'] = []
         
         # 저장된 선택값 중 현재 options에 존재하는 유효한 ID들만 필터링하여 session_state에 다시 저장
-        # 이 필터링이 중요합니다. 사용자가 이전 세션에서 선택했으나 현재 존재하지 않는 기록물은 제거합니다.
-        # 이렇게 함으로써 st.multiselect가 항상 유효한 값들만 다루게 하여 오류를 방지합니다.
+        # 이렇게 함으로써, 이전 세션에서 선택했으나 현재는 존재하지 않는 기록물은 자동으로 제거되고
+        # 위젯이 항상 유효한 선택 상태를 유지합니다.
+        # 이 필터링은 st.multiselect가 자신의 선택 상태를 읽어들이기 전에 st.session_state를 '정리'하는 역할
         filtered_selections = [
             record_id for record_id in st.session_state['sharing_multiselect']
-            if record_id in all_available_record_ids_set # 현재 존재하는 유효한 ID인지 확인
+            if record_id in all_available_record_ids_set 
         ]
         st.session_state['sharing_multiselect'] = filtered_selections
     
-    # st.multiselect 호출: value 매개변수 없이 key를 통한 session_state 관리만 의존
-    # st.multiselect는 자신의 key (sharing_multiselect)에 연결된 st.session_state 값을 자동으로 읽어 선택 상태를 표시합니다.
-    # 사용자가 선택하면 이 st.session_state 값이 업데이트됩니다.
     selected_record_ids = st.multiselect(
         "공유방에 포함할 기록물을 선택해주세요 (여러 개 선택 가능):",
         options=record_options, # [('Label', 'Value_ID'), ...]
         format_func=lambda x: x[0].split(" (")[0], # x는 (Label, Value_ID) 튜플
         key="sharing_multiselect", # 이 key로 st.session_state에 선택된 Value_ID 리스트가 저장됨
-        # value= 매개변수는 사용하지 않습니다.
+        # value= 매개변수는 사용하지 않습니다! 
+        # 위에서 st.session_state['sharing_multiselect']를 완벽하게 관리했으므로,
+        # 위젯은 이 값을 읽어 자신의 상태를 표시할 것입니다.
     )
 
     st.subheader("방 설정")
