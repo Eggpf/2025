@@ -307,6 +307,21 @@ def render_search_and_record_page():
     with manual_entry_expander:
         render_manual_entry_form(st.session_state['username'])
 
+# --- st.multiselect 초기화를 위한 on_change 콜백 함수 ---
+def reset_multiselect_after_submit():
+    """공유방 생성 폼 제출 후 multiselect 값을 초기화합니다."""
+    # st.session_state['sharing_multiselect'] = []는 key를 통해 st.multiselect에 연결된 값을 직접 변경하는 것이므로,
+    # 이는 위젯과 session_state의 충돌을 유발할 수 있습니다.
+    # 대신, on_change를 통해 위젯의 기본값을 None으로 설정하거나, 빈 리스트로 되돌리도록 시도합니다.
+    # Streamlit 내부적으로는 st.session_state[key]에 None을 넣으면 위젯이 기본값으로 돌아갑니다.
+    # 하지만 multiselect는 빈 리스트를 넣는 것이 더 명확합니다.
+    # st.session_state.update({'sharing_multiselect': []})와 같은 직접적인 업데이트는
+    # multiselect의 onChange 메커니즘과 충돌할 수 있습니다.
+    # 여기서는 그저 플래그를 지우고, 다음 렌더링에서 multiselect가 자신의 key를 다시 읽어 초기화되도록 기대합니다.
+    if 'clear_sharing_multiselect_flag' in st.session_state:
+        del st.session_state['clear_sharing_multiselect_flag']
+
+
 # --- 렌더링 함수: 감상 공유방 생성 페이지 ---
 def render_create_sharing_room_page(username):
     st.title("🎉 새 감상 공유방 만들기")
@@ -330,36 +345,39 @@ def render_create_sharing_room_page(username):
     # 현재 유효한 모든 기록 ID 목록 (record_options의 튜플에서 ID 부분만 추출)
     all_available_record_ids_set = {option[1] for option in record_options}
 
-    # === 핵심 로직: st.session_state['sharing_multiselect']의 상태를 완벽하게 관리 ===
-    # 1. 'clear_sharing_multiselect_flag'가 True이면, multiselect 값을 빈 리스트로 초기화
+    # === 핵심 로직: st.multiselect의 초기값을 관리하되, 위젯의 자동 업데이트를 존중 ===
+    # 1. 폼 제출 후 multiselect를 초기화해야 하는 경우
     if st.session_state.get('clear_sharing_multiselect_flag', False):
-        st.session_state['sharing_multiselect'] = [] # session_state 값을 직접 빈 리스트로 설정
+        # 직접 st.session_state['sharing_multiselect'] 값을 빈 리스트로 설정
+        # 이렇게 하면 st.multiselect가 다음 렌더링에서 이 빈 리스트를 읽어 초기화됩니다.
+        st.session_state['sharing_multiselect'] = []
         # 플래그는 사용 후 즉시 삭제하여 다음 렌더링에서 다시 초기화되지 않도록 함
+        # 이 플래그 삭제는 이 위젯이 자신의 값을 계속 유지하도록 허용하는 지점
         del st.session_state['clear_sharing_multiselect_flag'] 
     else:
-        # 2. 그렇지 않은 경우, 기존 세션 상태에 저장된 값을 유효성 검사하여 업데이트
+        # 2. 그렇지 않은 경우 (기존 상태 유지 또는 첫 로딩 시)
         # 'sharing_multiselect'가 없거나 리스트 형태가 아니면 빈 리스트로 시작하여 안전성 확보
         if 'sharing_multiselect' not in st.session_state or not isinstance(st.session_state['sharing_multiselect'], list):
             st.session_state['sharing_multiselect'] = []
         
-        # 저장된 선택값 중 현재 options에 존재하는 유효한 ID들만 필터링하여 session_state에 다시 저장
-        # st.multiselect 위젯은 이 st.session_state 값을 자동으로 읽어 선택 상태를 표시
-        filtered_selections = [
+        # 현재 st.session_state['sharing_multiselect']에 저장된 값들을 가져와 유효성 검사
+        # 이는 사용자가 앱을 닫았다 다시 열었을 때, 또는 이전 세션에서 기록이 삭제되었을 경우
+        # 유효하지 않은 ID가 남아있을 수 있으므로 반드시 필요
+        current_valid_selections = [
             record_id for record_id in st.session_state['sharing_multiselect']
             if record_id in all_available_record_ids_set # 현재 존재하는 유효한 ID인지 확인
         ]
-        st.session_state['sharing_multiselect'] = filtered_selections
+        # 유효성 검사를 거친 값으로 st.session_state를 업데이트
+        st.session_state['sharing_multiselect'] = current_valid_selections
     
-    # st.multiselect 호출: value 매개변수 없이 key를 통한 session_state 관리만 의존
-    # st.session_state.sharing_multiselect의 현재 값이 위젯의 기본값으로 사용됨
     selected_record_ids = st.multiselect(
         "공유방에 포함할 기록물을 선택해주세요 (여러 개 선택 가능):",
         options=record_options, # [('Label', 'Value_ID'), ...]
         format_func=lambda x: x[0].split(" (")[0], # x는 (Label, Value_ID) 튜플
         key="sharing_multiselect", # 이 key로 st.session_state에 선택된 Value_ID 리스트가 저장됨
-        # !!! 중요한 변경: value= 매개변수를 완전히 제거 !!!
-        # 이제 st.multiselect는 자신의 key (sharing_multiselect)를 통해
-        # st.session_state의 값을 읽고 쓰도록 합니다.
+        # value= 매개변수를 완전히 제거합니다.
+        # 이제 st.multiselect는 자신의 key를 통해 st.session_state의 값을 자동으로 읽고 쓸 것입니다.
+        # 즉, 우리가 위에서 st.session_state['sharing_multiselect']를 관리했으니, 위젯은 그 값을 따릅니다.
     )
 
     st.subheader("방 설정")
